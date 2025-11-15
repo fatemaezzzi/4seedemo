@@ -1,3 +1,5 @@
+//Copy this code in your flutter project's main.dart file
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -100,10 +102,18 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _pickAndScanImage,
               icon: _isLoading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.camera_alt),
-              label: Text(_isLoading ? "Processing..." : "Scan Attendance Sheet"),
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(16)),
+              label: Text(
+                _isLoading ? "Processing..." : "Scan Attendance Sheet",
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.all(16),
+              ),
             ),
 
             const SizedBox(height: 20),
@@ -118,7 +128,10 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
                     border: Border.all(color: Colors.grey),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(_resultText, style: const TextStyle(fontSize: 16)),
+                  child: Text(
+                    _resultText,
+                    style: const TextStyle(fontSize: 16),
+                  ),
                 ),
               ),
             ),
