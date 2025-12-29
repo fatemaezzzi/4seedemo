@@ -1,3 +1,11 @@
+<<<<<<< HEAD
+=======
+# - List of dependencies to install 
+# - fastapi uvicorn python-multipart easyocr opencv-python-headless supervision numpy
+# - to run the server: uvicorn forsee_backend.main:app --host
+# - test it on uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+>>>>>>> d00643ab8a9cc80e0ebe4c47937446656d588666
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 import numpy as np
@@ -13,7 +21,11 @@ ocr = OCREngine()
 @app.get("/")
 def home():
     return {"message": "Server is running! Use /scan endpoint to upload images."}
+<<<<<<< HEAD
 # --------------------------~~
+=======
+# --------------------------
+>>>>>>> d00643ab8a9cc80e0ebe4c47937446656d588666
 
 @app.post("/scan")
 async def scan(file: UploadFile = File(...)):
