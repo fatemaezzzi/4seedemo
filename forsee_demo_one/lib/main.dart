@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/welcome_page_first.dart';
 import 'scan_attendance.dart'; // Import your new file
 // import 'welcome_page_first.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MaterialApp(
     home: HomeScreen(),
   ));
