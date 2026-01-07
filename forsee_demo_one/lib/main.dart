@@ -49,6 +49,18 @@ class HomeScreen extends StatelessWidget {
           },
           child: const Text("WelcomePage"),
         ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const InputTestPage(),
+              ),
+            );
+          },
+          child: const Text("Testing Page"),
+        ),
       ],
     ),
     ),
