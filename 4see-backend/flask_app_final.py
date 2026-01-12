@@ -17,7 +17,9 @@ def predict():
         
     result = predictor.predict(student_data)
     
-    if result["status"] == "error":
+    
+    # .get() returns None if "status" doesn't exist, so this is safe
+    if result.get("status") == "error":
         return jsonify(result), 500
         
     return jsonify(result)
