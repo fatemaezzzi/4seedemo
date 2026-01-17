@@ -99,7 +99,7 @@ class _DashboardState extends State<Dashboard> {
             if (_result != null) _buildResultCard(),
           ],
         ),
-      ),
+      )
     );
   }
 

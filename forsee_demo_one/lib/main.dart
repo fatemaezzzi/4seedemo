@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/welcome_page_first.dart';
+import 'input_test_page.dart';
 import 'scan_attendance.dart'; // Import your new file
 // import 'welcome_page_first.dart';
+import 'simple_api_test.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -11,6 +13,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   runApp(const MaterialApp(
+    debugShowCheckedModeBanner: false,
     home: HomeScreen(),
   ));
 }
@@ -60,6 +63,18 @@ class HomeScreen extends StatelessWidget {
             );
           },
           child: const Text("Testing Page"),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SimpleAPITest(),
+              ),
+            );
+          },
+          child: const Text("API Testing Page"),
         ),
       ],
     ),

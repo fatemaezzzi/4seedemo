@@ -1,16 +1,30 @@
 # forsee_demo_one
+A Flutter application that predicts student dropout risk using a machine learning model hosted on Hugging Face Spaces. The app stores student data and prediction history in Firebase Firestore.
 
-Demo project to experiment features like - Authentication, API testing, Database etc.
+## 🚀 Features
 
-## Getting Started
+* **Student Management:** Add and view student profiles with academic data (Grades, Attendance, etc.).
+* **Risk Prediction:** Integrates with a custom Python ML model via REST API.
+* **Risk Analysis:** Visualizes risk levels (Low/Medium/High), dropout probability, and specific risk factors.
+* **History:** Tracks historical predictions for each student in Firestore.
 
-This project is a starting point for a Flutter application.
+## 🛠️ Tech Stack
 
-A few resources to get you started if this is your first Flutter project:
+* **Frontend:** Flutter (Dart)
+* **Backend:** Firebase Firestore (Database)
+* **ML API:** Hugging Face Spaces (Gradio)
+* **Networking:** `http` package
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## ⚙️ Setup & Installation
+
+### 1. Prerequisites
+* Flutter SDK installed (`flutter doctor`)
+* Firebase project setup
+
+### 2. Clone and Install
+```bash
+git clone https://github.com/fatemaezzzi/4seedemo
+cd forsee_demo_one
+flutter pub get
