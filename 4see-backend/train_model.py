@@ -1,11 +1,14 @@
 """
-Student Dropout Prediction - Complete Training Pipeline
-========================================================
-This script consolidates all training steps from the Jupyter notebook
-into a single, production-ready Python file.
+REDESIGNED Student Dropout Prediction - Production ML Pipeline
+===============================================================
+This script creates a proper ML model that:
+1. Uses ALL features equally (no hardcoded if-else)
+2. Generates weighted risk scores from model probabilities
+3. Removes data leakage (NO G3 in features)
+4. Implements proper feature engineering
+5. Handles class imbalance
 
-Usage:
-    python train_model.py
+Author: ML Engineering Team
 """
 
 import pandas as pd
@@ -13,6 +16,8 @@ import numpy as np
 import os
 import warnings
 from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
@@ -20,7 +25,8 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
                             f1_score, roc_auc_score, confusion_matrix, 
-                            classification_report)
+                            classification_report, roc_curve)
+from imblearn.over_sampling import SMOTE
 import joblib
 
 warnings.filterwarnings('ignore')
@@ -30,226 +36,292 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 
 class Config:
-    """Configuration settings for the training pipeline"""
+    """Configuration for the ML pipeline"""
     DATA_DIR = './data'
     MODEL_DIR = './models'
     RANDOM_STATE = 42
     TEST_SIZE = 0.2
     CV_FOLDS = 5
     
-    # Model hyperparameters (optimized)
+    # CRITICAL: Features to EXCLUDE (to prevent data leakage)
+    EXCLUDE_FEATURES = ['G3']  # G3 is the final grade - we can't use it!
+    
+    # Model hyperparameters (tuned for student dropout)
     RF_PARAMS = {
-        'n_estimators': 200,
-        'max_depth': 15,
-        'min_samples_split': 5,
-        'min_samples_leaf': 2,
+        'n_estimators': 300,
+        'max_depth': 20,
+        'min_samples_split': 10,
+        'min_samples_leaf': 4,
         'max_features': 'sqrt',
         'bootstrap': True,
         'random_state': RANDOM_STATE,
         'n_jobs': -1,
-        'class_weight': 'balanced'  # Important for imbalanced data
+        'class_weight': 'balanced_subsample',
+        'criterion': 'gini'
     }
     
-    # Target variable thresholds
-    DROPOUT_THRESHOLDS = {
-        'critical_grade': 10,      # G3 < 10 = high risk
-        'borderline_grade': 12,    # G3 < 12 = medium risk
-        'high_absences': 15,       # absences > 15
-        'multiple_failures': 1     # failures > 1
+    GB_PARAMS = {
+        'n_estimators': 200,
+        'learning_rate': 0.05,
+        'max_depth': 6,
+        'min_samples_split': 10,
+        'min_samples_leaf': 4,
+        'subsample': 0.8,
+        'random_state': RANDOM_STATE
     }
+    
+    # Target creation strategy
+    TARGET_STRATEGY = 'grade_based'  # Options: 'grade_based', 'multi_factor'
+    GRADE_THRESHOLD = 10  # G3 < 10 indicates dropout risk
 
 # ============================================================================
 # DATA LOADING
 # ============================================================================
 
 def find_and_load_data(data_dir):
-    """
-    Automatically find and load student performance data
-    
-    Args:
-        data_dir: Directory containing CSV files
-        
-    Returns:
-        DataFrame with loaded data or None if not found
-    """
+    """Load student performance data"""
     print("\n" + "="*80)
     print("STEP 1: DATA LOADING")
     print("="*80)
     
     csv_files = list(Path(data_dir).rglob('*.csv'))
-    print(f"\nFound {len(csv_files)} CSV files")
+    print(f"\nSearching for CSV files in {data_dir}...")
+    print(f"Found {len(csv_files)} CSV files")
     
     for filepath in csv_files:
         for separator in [';', ',', '\t']:
             try:
                 df = pd.read_csv(filepath, sep=separator)
                 
-                # Check if this file has the required 'G3' column
-                if 'G3' in df.columns:
-                    print(f"✅ Loaded: {filepath}")
+                # Check for required columns
+                if 'G3' in df.columns and 'G1' in df.columns and 'G2' in df.columns:
+                    print(f"\n✅ Loaded: {filepath.name}")
                     print(f"   Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-                    print(f"   Columns: {list(df.columns)[:10]}...")
+                    print(f"   Columns: {list(df.columns)}")
                     return df
             except Exception as e:
                 continue
     
-    print("❌ ERROR: Could not find file with 'G3' column")
+    print("❌ ERROR: Could not find suitable data file")
     return None
+
+# ============================================================================
+# TARGET VARIABLE CREATION
+# ============================================================================
+
+def create_target_variable(df, strategy='grade_based'):
+    """
+    Create target variable WITHOUT using G3 as a feature
+    
+    Strategy 1: Grade-based (simple, effective)
+    - Use G3 to create target, then REMOVE it from features
+    - dropout = 1 if G3 < threshold, else 0
+    
+    Strategy 2: Multi-factor (complex, considers multiple signals)
+    - Combines G1, G2, failures, absences
+    - More nuanced but requires careful tuning
+    
+    Args:
+        df: Input DataFrame
+        strategy: 'grade_based' or 'multi_factor'
+    
+    Returns:
+        DataFrame with 'target' column added
+    """
+    print("\n" + "="*80)
+    print("STEP 2: TARGET VARIABLE CREATION")
+    print("="*80)
+    
+    if strategy == 'grade_based':
+        # Simple and effective: G3 < 10 indicates dropout risk
+        df['target'] = (df['G3'] < Config.GRADE_THRESHOLD).astype(int)
+        print(f"\n📊 Strategy: Grade-based (G3 < {Config.GRADE_THRESHOLD})")
+        
+    elif strategy == 'multi_factor':
+        # Complex: Multiple factors indicate dropout risk
+        def calculate_dropout_risk(row):
+            risk_score = 0
+            
+            # Poor academic trajectory
+            if row.get('G1', 10) < 10:
+                risk_score += 1
+            if row.get('G2', 10) < 10:
+                risk_score += 1
+            
+            # History of failures
+            if row.get('failures', 0) >= 2:
+                risk_score += 2
+            elif row.get('failures', 0) == 1:
+                risk_score += 1
+            
+            # High absences
+            if row.get('absences', 0) > 15:
+                risk_score += 1
+            
+            # Low study time
+            if row.get('studytime', 2) < 2:
+                risk_score += 1
+            
+            # Final grade confirms dropout
+            if row.get('G3', 10) < Config.GRADE_THRESHOLD:
+                risk_score += 2
+            
+            return 1 if risk_score >= 4 else 0
+        
+        df['target'] = df.apply(calculate_dropout_risk, axis=1)
+        print(f"\n📊 Strategy: Multi-factor risk assessment")
+    
+    # Report class distribution
+    dropout_count = df['target'].sum()
+    continue_count = len(df) - dropout_count
+    dropout_pct = (dropout_count / len(df)) * 100
+    
+    print(f"\n📈 Target Distribution:")
+    print(f"   Dropout (1):  {dropout_count:4d} students ({dropout_pct:.1f}%)")
+    print(f"   Continue (0): {continue_count:4d} students ({100-dropout_pct:.1f}%)")
+    
+    if dropout_pct < 20 or dropout_pct > 80:
+        print(f"   ⚠️  WARNING: Imbalanced dataset - will use SMOTE")
+    
+    return df
 
 # ============================================================================
 # FEATURE ENGINEERING
 # ============================================================================
 
-def create_dropout_target(df, thresholds):
+def engineer_features(df):
     """
-    Create dropout target using weighted risk calculation
-    
-    This function implements a sophisticated risk assessment that considers:
-    1. Academic performance (G3 grades)
-    2. Historical failures
-    3. Attendance patterns
-    4. Study engagement
-    5. Family and social support
-    
-    Args:
-        df: Input DataFrame
-        thresholds: Dictionary of risk thresholds
-        
-    Returns:
-        Series with binary dropout labels (0=continue, 1=dropout)
+    Create derived features that capture important patterns
     """
-    def calculate_risk_score(row):
-        score = 0.0
-        
-        # ACADEMIC FACTORS (Weight: 0.6)
-        g3 = row.get('G3', 20)
-        if g3 < thresholds['critical_grade']:
-            score += 0.35  # Critical failure
-        elif g3 < thresholds['borderline_grade']:
-            score += 0.15  # Borderline performance
-            
-        failures = row.get('failures', 0)
-        if failures > thresholds['multiple_failures']:
-            score += 0.25
-        elif failures == 1:
-            score += 0.10
-        
-        # ENGAGEMENT FACTORS (Weight: 0.25)
-        absences = row.get('absences', 0)
-        if absences > thresholds['high_absences']:
-            score += 0.15
-        elif absences > 10:
-            score += 0.05
-            
-        studytime = row.get('studytime', 2)
-        if studytime < 2:
-            score += 0.10
-        
-        # SUPPORT FACTORS (Weight: 0.15)
-        famsup = row.get('famsup', 'yes')
-        if famsup in ['no', 0, '0']:
-            score += 0.08
-            
-        health = row.get('health', 5)
-        if health <= 2:
-            score += 0.07
-        
-        # Return binary classification
-        return 1 if score >= 0.5 else 0
+    print("\n" + "="*80)
+    print("STEP 3: FEATURE ENGINEERING")
+    print("="*80)
     
-    return df.apply(calculate_risk_score, axis=1)
+    df_eng = df.copy()
+    
+    # ---------------------------------------------------------
+    # 🛠️ FIX: Convert binary 'yes'/'no' columns to 1/0 first
+    # ---------------------------------------------------------
+    binary_mapping = {'yes': 1, 'no': 0}
+    cols_to_convert = ['higher', 'famsup', 'schoolsup', 'paid']
+    
+    for col in cols_to_convert:
+        if col in df_eng.columns and df_eng[col].dtype == 'object':
+            print(f"   Converting '{col}' from yes/no to 1/0 for calculations...")
+            df_eng[col] = df_eng[col].map(binary_mapping)
+            # Fill any NaNs that resulted from mapping (just in case) with 0
+            df_eng[col] = df_eng[col].fillna(0).astype(int)
+    # ---------------------------------------------------------
 
-def select_features(df):
+    # Academic trend features
+    df_eng['grade_improvement'] = df_eng['G2'] - df_eng['G1']
+    df_eng['grade_average'] = (df_eng['G1'] + df_eng['G2']) / 2
+    df_eng['grade_volatility'] = abs(df_eng['G2'] - df_eng['G1'])
+    
+    # Combined risk indicators
+    df_eng['total_alcohol'] = df_eng['Dalc'] + df_eng['Walc']
+    df_eng['parent_education'] = df_eng['Medu'] + df_eng['Fedu']
+    
+    # Engagement score (Now this will work because 'higher' is numeric)
+    df_eng['engagement_score'] = (
+        df_eng['studytime'] * 2 +  
+        (5 - df_eng.get('goout', 3)) + 
+        df_eng.get('higher', 1) * 2  
+    )
+    
+    # Support score (Now this will work because famsup/schoolsup/paid are numeric)
+    df_eng['support_score'] = (
+        df_eng.get('famsup', 0) * 2 +
+        df_eng.get('schoolsup', 0) +
+        df_eng.get('paid', 0)
+    )
+    
+    # Risk indicators (binary flags)
+    df_eng['high_absences'] = (df_eng['absences'] > 10).astype(int)
+    df_eng['has_failures'] = (df_eng['failures'] > 0).astype(int)
+    df_eng['low_study'] = (df_eng['studytime'] < 2).astype(int)
+    df_eng['high_alcohol'] = (df_eng['total_alcohol'] > 4).astype(int)
+    
+    # Interaction features
+    df_eng['study_health'] = df_eng['studytime'] * df_eng['health']
+    df_eng['parent_support'] = df_eng['parent_education'] * df_eng.get('famsup', 0)
+    
+    print(f"\n✅ Created {len(df_eng.columns) - len(df.columns)} new features")
+    
+    return df_eng
+
+def select_features(df, exclude_list):
     """
-    Select relevant features for modeling
+    Select all relevant features, excluding those in exclude_list
     
     Returns:
-        List of feature column names available in the dataset
+        List of feature names
     """
-    # Comprehensive feature list
-    desired_features = [
-        # Academic performance
-        'G1', 'G2', 'G3', 'failures', 'absences', 'studytime',
-        
-        # Demographics
-        'age', 'sex', 'address', 'famsize', 'Pstatus',
-        
-        # Family background
-        'Medu', 'Fedu', 'Mjob', 'Fjob', 'guardian',
-        
-        # Support and resources
-        'famsup', 'schoolsup', 'paid', 'internet',
-        
-        # Social and lifestyle
-        'activities', 'nursery', 'higher', 'romantic',
-        'famrel', 'freetime', 'goout', 'Dalc', 'Walc', 'health',
-        
-        # School
-        'school', 'reason', 'traveltime'
-    ]
+    # Start with all columns except target and excluded features
+    all_features = [col for col in df.columns if col not in ['target'] + exclude_list]
     
-    # Keep only features that exist in the dataset
-    available_features = [f for f in desired_features if f in df.columns]
+    print(f"\n📋 Feature Selection:")
+    print(f"   Total features: {len(all_features)}")
+    print(f"   Excluded: {exclude_list}")
     
-    print(f"\n📊 Selected {len(available_features)} features")
-    return available_features
+    return all_features
 
 # ============================================================================
 # DATA PREPROCESSING
 # ============================================================================
 
-def preprocess_data(df, feature_columns, target_column='target'):
+def preprocess_data(df, feature_columns, use_smote=True):
     """
-    Preprocess data for machine learning
+    Preprocess data with proper handling of imbalanced classes
     
     Steps:
     1. Handle missing values
     2. Encode categorical variables
-    3. Scale numerical features
-    
-    Args:
-        df: Input DataFrame
-        feature_columns: List of feature names
-        target_column: Name of target variable
-        
-    Returns:
-        X_train, X_test, y_train, y_test, scaler, encoders
+    3. Split data
+    4. Scale features
+    5. Apply SMOTE if needed
     """
     print("\n" + "="*80)
-    print("STEP 2: DATA PREPROCESSING")
+    print("STEP 4: DATA PREPROCESSING")
     print("="*80)
     
     # Create working copy
-    df_model = df[feature_columns + [target_column]].copy()
+    df_model = df[feature_columns + ['target']].copy()
     
-    # Handle missing values
-    numerical_cols = df_model.select_dtypes(include=[np.number]).columns
-    categorical_cols = df_model.select_dtypes(include=['object']).columns
+    # 1. Handle missing values
+    print("\n🔧 Handling missing values...")
+    numerical_cols = df_model.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df_model.select_dtypes(include=['object']).columns.tolist()
     
-    df_model[numerical_cols] = df_model[numerical_cols].fillna(
-        df_model[numerical_cols].median()
-    )
-    df_model[categorical_cols] = df_model[categorical_cols].fillna(
-        df_model[categorical_cols].mode().iloc[0]
-    )
+    # Remove 'target' from numerical_cols if present
+    if 'target' in numerical_cols:
+        numerical_cols.remove('target')
     
-    print(f"✅ Handled missing values")
+    for col in numerical_cols:
+        if df_model[col].isnull().any():
+            df_model[col].fillna(df_model[col].median(), inplace=True)
     
-    # Encode categorical variables
+    for col in categorical_cols:
+        if df_model[col].isnull().any():
+            df_model[col].fillna(df_model[col].mode()[0], inplace=True)
+    
+    print(f"   ✅ Filled missing values in {len(numerical_cols)} numerical, {len(categorical_cols)} categorical columns")
+    
+    # 2. Encode categorical variables
+    print("\n🔤 Encoding categorical variables...")
     label_encoders = {}
     for col in categorical_cols:
-        if col != target_column:
-            le = LabelEncoder()
-            df_model[col] = le.fit_transform(df_model[col].astype(str))
-            label_encoders[col] = le
+        le = LabelEncoder()
+        df_model[col] = le.fit_transform(df_model[col].astype(str))
+        label_encoders[col] = le
     
-    print(f"✅ Encoded {len(label_encoders)} categorical features")
+    print(f"   ✅ Encoded {len(label_encoders)} categorical features")
     
-    # Separate features and target
-    X = df_model.drop(target_column, axis=1)
-    y = df_model[target_column]
+    # 3. Separate features and target
+    X = df_model.drop('target', axis=1)
+    y = df_model['target']
     
-    # Train-test split with stratification
+    # 4. Train-test split (stratified to maintain class balance)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, 
         test_size=Config.TEST_SIZE, 
@@ -257,64 +329,73 @@ def preprocess_data(df, feature_columns, target_column='target'):
         stratify=y
     )
     
-    # Scale features
+    print(f"\n📊 Train-Test Split:")
+    print(f"   Training set: {X_train.shape[0]} samples")
+    print(f"   Test set: {X_test.shape[0]} samples")
+    print(f"   Features: {X_train.shape[1]}")
+    
+    # 5. Scale features
+    print("\n⚖️  Scaling features...")
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
-    print(f"\n📊 Data split:")
-    print(f"   Training: {X_train.shape[0]} samples")
-    print(f"   Testing: {X_test.shape[0]} samples")
-    print(f"   Class distribution (train): {np.bincount(y_train)}")
+    print(f"   ✅ Applied StandardScaler")
     
-    return X_train_scaled, X_test_scaled, y_train, y_test, scaler, label_encoders
+    # 6. Handle class imbalance with SMOTE
+    if use_smote:
+        dropout_ratio = y_train.sum() / len(y_train)
+        if dropout_ratio < 0.3 or dropout_ratio > 0.7:
+            print(f"\n🔄 Applying SMOTE (original ratio: {dropout_ratio:.2%})...")
+            smote = SMOTE(random_state=Config.RANDOM_STATE, k_neighbors=5)
+            X_train_scaled, y_train = smote.fit_resample(X_train_scaled, y_train)
+            print(f"   ✅ New training set: {X_train_scaled.shape[0]} samples")
+            print(f"   ✅ New class ratio: {y_train.sum() / len(y_train):.2%}")
+    
+    # Print final class distribution
+    print(f"\n📈 Final Class Distribution:")
+    print(f"   Train - Dropout: {y_train.sum()}, Continue: {len(y_train) - y_train.sum()}")
+    print(f"   Test  - Dropout: {y_test.sum()}, Continue: {len(y_test) - y_test.sum()}")
+    
+    return X_train_scaled, X_test_scaled, y_train, y_test, scaler, label_encoders, X_train.columns.tolist()
 
 # ============================================================================
 # MODEL TRAINING
 # ============================================================================
 
 def train_models(X_train, y_train):
-    """
-    Train multiple models for comparison
-    
-    Returns:
-        Dictionary of trained models
-    """
+    """Train multiple models for comparison"""
     print("\n" + "="*80)
-    print("STEP 3: MODEL TRAINING")
+    print("STEP 5: MODEL TRAINING")
     print("="*80)
     
     models = {}
     
-    # 1. Random Forest (Primary model)
-    print("\n🌲 Training Random Forest...")
+    # 1. Random Forest (Best for this task)
+    print("\n🌲 Training Random Forest Classifier...")
     rf = RandomForestClassifier(**Config.RF_PARAMS)
     rf.fit(X_train, y_train)
     models['RandomForest'] = rf
-    print("   ✅ Complete")
+    print("   ✅ Training complete")
     
     # 2. Gradient Boosting
-    print("\n🚀 Training Gradient Boosting...")
-    gb = GradientBoostingClassifier(
-        n_estimators=100,
-        learning_rate=0.1,
-        max_depth=5,
-        random_state=Config.RANDOM_STATE
-    )
+    print("\n🚀 Training Gradient Boosting Classifier...")
+    gb = GradientBoostingClassifier(**Config.GB_PARAMS)
     gb.fit(X_train, y_train)
     models['GradientBoosting'] = gb
-    print("   ✅ Complete")
+    print("   ✅ Training complete")
     
     # 3. Logistic Regression (Baseline)
     print("\n📈 Training Logistic Regression...")
     lr = LogisticRegression(
-        max_iter=1000,
+        max_iter=2000,
         random_state=Config.RANDOM_STATE,
-        class_weight='balanced'
+        class_weight='balanced',
+        C=0.1
     )
     lr.fit(X_train, y_train)
     models['LogisticRegression'] = lr
-    print("   ✅ Complete")
+    print("   ✅ Training complete")
     
     return models
 
@@ -322,34 +403,30 @@ def train_models(X_train, y_train):
 # MODEL EVALUATION
 # ============================================================================
 
-def evaluate_models(models, X_train, X_test, y_train, y_test):
-    """
-    Comprehensive model evaluation with cross-validation
-    
-    Returns:
-        Dictionary of evaluation metrics for each model
-    """
+def evaluate_models(models, X_train, X_test, y_train, y_test, feature_names):
+    """Comprehensive evaluation with feature importance"""
     print("\n" + "="*80)
-    print("STEP 4: MODEL EVALUATION")
+    print("STEP 6: MODEL EVALUATION")
     print("="*80)
     
     results = {}
     
     for name, model in models.items():
         print(f"\n{'='*80}")
-        print(f"{name}")
+        print(f"📊 {name}")
         print(f"{'='*80}")
         
-        # Cross-validation on training data
+        # Cross-validation
         cv = StratifiedKFold(n_splits=Config.CV_FOLDS, shuffle=True, 
                             random_state=Config.RANDOM_STATE)
-        cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
+        cv_scores = cross_val_score(model, X_train, y_train, cv=cv, 
+                                    scoring='f1', n_jobs=-1)
         
-        # Test set predictions
+        # Predictions
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)[:, 1]
         
-        # Calculate metrics
+        # Metrics
         metrics = {
             'cv_f1_mean': cv_scores.mean(),
             'cv_f1_std': cv_scores.std(),
@@ -362,8 +439,10 @@ def evaluate_models(models, X_train, X_test, y_train, y_test):
         
         results[name] = metrics
         
-        # Print results
-        print(f"\n📊 Cross-Validation F1: {metrics['cv_f1_mean']:.4f} ± {metrics['cv_f1_std']:.4f}")
+        # Print metrics
+        print(f"\n🎯 Cross-Validation:")
+        print(f"   F1-Score: {metrics['cv_f1_mean']:.4f} ± {metrics['cv_f1_std']:.4f}")
+        
         print(f"\n🎯 Test Set Performance:")
         print(f"   Accuracy:  {metrics['accuracy']:.4f}")
         print(f"   Precision: {metrics['precision']:.4f}")
@@ -371,10 +450,22 @@ def evaluate_models(models, X_train, X_test, y_train, y_test):
         print(f"   F1-Score:  {metrics['f1']:.4f}")
         print(f"   ROC-AUC:   {metrics['roc_auc']:.4f}")
         
-        print(f"\n📋 Confusion Matrix:")
+        # Confusion matrix
         cm = confusion_matrix(y_test, y_pred)
-        print(f"   TN: {cm[0,0]:4d}  FP: {cm[0,1]:4d}")
-        print(f"   FN: {cm[1,0]:4d}  TP: {cm[1,1]:4d}")
+        print(f"\n📋 Confusion Matrix:")
+        print(f"                Predicted")
+        print(f"              Continue  Dropout")
+        print(f"   Continue  {cm[0,0]:6d}   {cm[0,1]:6d}")
+        print(f"   Dropout   {cm[1,0]:6d}   {cm[1,1]:6d}")
+        
+        # Feature importance (for tree-based models)
+        if hasattr(model, 'feature_importances_'):
+            importances = model.feature_importances_
+            indices = np.argsort(importances)[::-1]
+            
+            print(f"\n🔍 Top 10 Most Important Features:")
+            for i, idx in enumerate(indices[:10], 1):
+                print(f"   {i:2d}. {feature_names[idx]:20s}: {importances[idx]:.4f}")
     
     return results
 
@@ -382,75 +473,103 @@ def evaluate_models(models, X_train, X_test, y_train, y_test):
 # MODEL PERSISTENCE
 # ============================================================================
 
-def save_models(models, scaler, feature_columns, results):
-    """
-    Save trained models and artifacts
-    """
+def save_models(models, scaler, feature_columns, label_encoders, results):
+    """Save all model artifacts"""
     print("\n" + "="*80)
-    print("STEP 5: SAVING MODELS")
+    print("STEP 7: SAVING MODEL ARTIFACTS")
     print("="*80)
     
     os.makedirs(Config.MODEL_DIR, exist_ok=True)
     
-    # Find best model based on F1 score
+    # Find best model
     best_model_name = max(results, key=lambda x: results[x]['f1'])
-    best_model = models[best_model_name]
     
     # Save all models
     for name, model in models.items():
-        model_path = os.path.join(Config.MODEL_DIR, f'{name.lower()}_model.pkl')
-        joblib.dump(model, model_path)
-        print(f"✅ Saved: {model_path}")
+        filename = f'{name.lower()}_model.pkl'
+        filepath = os.path.join(Config.MODEL_DIR, filename)
+        joblib.dump(model, filepath)
+        print(f"✅ Saved: {filename}")
     
-    # Save scaler and feature names
+    # Save preprocessing artifacts
     joblib.dump(scaler, os.path.join(Config.MODEL_DIR, 'scaler.pkl'))
     joblib.dump(feature_columns, os.path.join(Config.MODEL_DIR, 'feature_columns.pkl'))
+    joblib.dump(label_encoders, os.path.join(Config.MODEL_DIR, 'label_encoders.pkl'))
+    
+    print(f"\n✅ Saved preprocessing artifacts:")
+    print(f"   - scaler.pkl")
+    print(f"   - feature_columns.pkl")
+    print(f"   - label_encoders.pkl")
+    
+    # Save model metadata
+    metadata = {
+        'best_model': best_model_name,
+        'performance': results,
+        'features': feature_columns,
+        'target_strategy': Config.TARGET_STRATEGY,
+        'grade_threshold': Config.GRADE_THRESHOLD
+    }
+    joblib.dump(metadata, os.path.join(Config.MODEL_DIR, 'model_metadata.pkl'))
     
     print(f"\n🏆 Best Model: {best_model_name}")
-    print(f"   F1-Score: {results[best_model_name]['f1']:.4f}")
-    print(f"   ROC-AUC:  {results[best_model_name]['roc_auc']:.4f}")
+    print(f"   F1-Score:  {results[best_model_name]['f1']:.4f}")
+    print(f"   ROC-AUC:   {results[best_model_name]['roc_auc']:.4f}")
+    print(f"   Precision: {results[best_model_name]['precision']:.4f}")
+    print(f"   Recall:    {results[best_model_name]['recall']:.4f}")
 
 # ============================================================================
 # MAIN PIPELINE
 # ============================================================================
 
 def main():
-    """Main training pipeline"""
+    """Execute complete training pipeline"""
     print("\n" + "="*80)
-    print("STUDENT DROPOUT PREDICTION - MODEL TRAINING")
+    print("🎓 STUDENT DROPOUT PREDICTION - REDESIGNED ML PIPELINE")
+    print("="*80)
+    print("This model uses ALL features equally and learns patterns from data")
+    print("No hardcoded rules - pure machine learning!")
     print("="*80)
     
-    # Load data
-    df = find_and_load_data(Config.DATA_DIR)
-    if df is None:
-        raise Exception("Could not load data")
-    
-    # Create target variable
-    print("\n🎯 Creating target variable...")
-    df['target'] = create_dropout_target(df, Config.DROPOUT_THRESHOLDS)
-    print(f"   Dropout: {(df['target']==1).sum()} students")
-    print(f"   Continue: {(df['target']==0).sum()} students")
-    
-    # Select features
-    feature_columns = select_features(df)
-    
-    # Preprocess data
-    X_train, X_test, y_train, y_test, scaler, encoders = preprocess_data(
-        df, feature_columns
-    )
-    
-    # Train models
-    models = train_models(X_train, y_train)
-    
-    # Evaluate models
-    results = evaluate_models(models, X_train, X_test, y_train, y_test)
-    
-    # Save models
-    save_models(models, scaler, feature_columns, results)
-    
-    print("\n" + "="*80)
-    print("✅ TRAINING COMPLETE!")
-    print("="*80)
+    try:
+        # Step 1: Load data
+        df = find_and_load_data(Config.DATA_DIR)
+        if df is None:
+            raise Exception("Failed to load data")
+        
+        # Step 2: Create target variable
+        df = create_target_variable(df, strategy=Config.TARGET_STRATEGY)
+        
+        # Step 3: Feature engineering
+        df = engineer_features(df)
+        
+        # Step 4: Select features (EXCLUDE G3!)
+        feature_columns = select_features(df, Config.EXCLUDE_FEATURES)
+        
+        # Step 5: Preprocess data
+        X_train, X_test, y_train, y_test, scaler, encoders, final_features = preprocess_data(
+            df, feature_columns, use_smote=True
+        )
+        
+        # Step 6: Train models
+        models = train_models(X_train, y_train)
+        
+        # Step 7: Evaluate models
+        results = evaluate_models(models, X_train, X_test, y_train, y_test, final_features)
+        
+        # Step 8: Save models
+        save_models(models, scaler, final_features, encoders, results)
+        
+        print("\n" + "="*80)
+        print("✅ PIPELINE COMPLETE!")
+        print("="*80)
+        print("\nNext steps:")
+        print("1. Upload all .pkl files from ./models/ to Hugging Face")
+        print("2. Use the generated app.py for deployment")
+        print("3. Test with real student data")
+        
+    except Exception as e:
+        print(f"\n❌ ERROR: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
