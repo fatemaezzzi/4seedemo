@@ -16,7 +16,7 @@ class _InputTestPageState extends State<InputTestPage> {
 
   // CHANGED: Using the /gradio_api/call/ endpoint which is standard for Spaces
   static const String API_URL =
-      'https://sliverstream8-4seedemo.hf.space/gradio_api/call/predict_student';
+      'https://sliverstream8-4seedemo.hf.space/gradio_api/call/predict_dropout';
 
   bool _isLoading = false;
   String _selectedStudentId = '';
