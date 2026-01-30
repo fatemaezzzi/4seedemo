@@ -21,6 +21,8 @@ import numpy as np
 import os
 import logging
 from datetime import datetime
+from flask import Flask, request, jsonify
+from aiengine import get_student_advice  # <--- ADD THIS LINE
 
 # ============================================================================
 # CONFIGURATION
@@ -320,7 +322,7 @@ def predict():
             "status": "error",
             "message": "Prediction service not initialized"
         }), 503
-    
+
     # Get JSON data
     try:
         request_data = request.get_json()
@@ -434,6 +436,23 @@ def batch_predict():
             "status": "error",
             "message": str(e)
         }), 500
+    
+@app.route('/get-ai-advice', methods=['POST'])
+def generate_advice():
+    data = request.json
+
+    # 1. Get data from the frontend request
+    name = data.get('name', 'Student')
+    risk = data.get('risk_level', 'Medium')
+    issues = data.get('academic_issues', [])
+    quiz = data.get('quiz_flags', {})
+
+    # 2. Call YOUR AI function
+    ai_response = get_student_advice(name, risk, issues, quiz)
+
+    # 3. Send it back to the app
+    return jsonify(ai_response)    
+
 
 # ============================================================================
 # ERROR HANDLERS
@@ -485,3 +504,4 @@ if __name__ == '__main__':
         port=5000,
         debug=True  # Set to True for development
     )
+    # --- AI ADVICE ENDPOINT ---
