@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'input_test_page.dart';
 
 class WelcomePageFirst extends StatelessWidget {
   const WelcomePageFirst({super.key});
@@ -34,7 +35,7 @@ class WelcomePageFirst extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const WelcomePageFirst(),
+                      builder: (context) => const InputTestPage(),
                     ),
                   );
                 },
