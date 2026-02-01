@@ -89,12 +89,12 @@ def find_and_load_data(data_dir):
     print(f"Found {len(csv_files)} CSV files")
     
     for filepath in csv_files:
-        for separator in [';', ',', '\t']:
+        for separator in [',', ';', '\t']:
             try:
                 df = pd.read_csv(filepath, sep=separator)
                 
                 # Check for required columns
-                if 'G3' in df.columns and 'G1' in df.columns and 'G2' in df.columns:
+                if 'G3' in df.columns and 'G1' in df.columns and 'G2' in df.columns and 'Target' in df.columns:
                     print(f"\n✅ Loaded: {filepath.name}")
                     print(f"   Shape: {df.shape[0]} rows × {df.shape[1]} columns")
                     print(f"   Columns: {list(df.columns)}")

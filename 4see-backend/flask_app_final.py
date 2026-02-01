@@ -1,17 +1,23 @@
 """
-Production-Ready Flask API for Student Dropout Prediction
-==========================================================
+Production-Ready Flask API for Student Dropout Prediction — 4See
+=================================================================
 
-Features:
-- Robust error handling
-- Input validation
-- Detailed logging
-- Health check endpoint
-- CORS support for mobile apps
-- Proper HTTP status codes
+Matches the 58-feature model produced by train_model.py.
 
-Usage:
-    python flask_app_final.py
+The Flutter app only needs to send the 28 RAW columns.  This API
+derives all 29 engineered features (grade trends, risk flags,
+weighted_risk_score …) before scaling and predicting, so the app
+never has to know about internal feature engineering.
+
+Endpoints
+---------
+    GET   /              API info
+    GET   /health        Liveness check
+    GET   /features      Raw columns the app must send
+    POST  /predict       Single-student prediction
+    POST  /batch         Multi-student prediction
+    GET   /test          Quick smoke-test with 3 sample profiles
+    POST  /get-ai-advice LLM-generated intervention advice
 """
 
 from flask import Flask, request, jsonify
@@ -21,17 +27,21 @@ import numpy as np
 import os
 import logging
 from datetime import datetime
-from flask import Flask, request, jsonify
-from aiengine import get_student_advice  # <--- ADD THIS LINE
+
+# Guard the LLM helper — only crashes at call-time if the file is missing
+try:
+    from aiengine import get_student_advice   # pragma: no cover
+    _HAS_AI = True
+except ImportError:                           # pragma: no cover
+    _HAS_AI = False
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for mobile app access
+app  = Flask(__name__)
+CORS(app)
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -40,418 +50,607 @@ logger = logging.getLogger(__name__)
 
 MODEL_DIR = './models'
 
+# ── Columns the Flutter app must send (the 28 raw inputs) ───────────────────
+RAW_INPUT_COLUMNS = [
+    "Course",
+    "Daytime/evening attendance",
+    "Previous qualification",
+    "Mjob", "Fjob",
+    "Educational special needs",
+    "Debtor",
+    "Tuition fees up to date",
+    "sex",
+    "Scholarship holder",
+    "age",
+    "G1", "G2", "G3",
+    "famsize", "Pstatus", "guardian",
+    "studytime", "failures",
+    "schoolsup", "famsup", "paid",
+    "activities", "higher", "internet",
+    "famrel", "health", "absences",
+]
+
+# ── Sensible per-column defaults (dataset means / modes) ─────────────────────
+# Used when a raw column is missing from the request — avoids the old blanket-0
+# which was wrong for columns like studytime (1–4) or famrel (1–5).
+RAW_DEFAULTS = {
+    "Course":                         9500,   # Nursing (most common)
+    "Daytime/evening attendance":     1,      # Daytime
+    "Previous qualification":         1,      # Secondary education
+    "Mjob":                           5,      # mean ≈ 5
+    "Fjob":                           5,
+    "Educational special needs":      0,
+    "Debtor":                         0,
+    "Tuition fees up to date":        1,
+    "sex":                            1,      # Male (slight majority)
+    "Scholarship holder":             0,
+    "age":                            22,     # dataset mean
+    "G1":                             11,     # dataset mean ≈ 10.75
+    "G2":                             10,
+    "G3":                             10,
+    "famsize":                        1,
+    "Pstatus":                        1,      # Living together
+    "guardian":                       0,      # Mother
+    "studytime":                      2,      # 2–5 h
+    "failures":                       1,      # dataset mean ≈ 0.77 → round up
+    "schoolsup":                      1,
+    "famsup":                         0,
+    "paid":                           1,
+    "activities":                     1,
+    "higher":                         0,
+    "internet":                       0,
+    "famrel":                         4,      # dataset mean ≈ 4.03
+    "health":                         3,      # dataset mean ≈ 3.30
+    "absences":                       6,      # dataset mean ≈ 5.50
+}
+
+# ── Priority weights (same as train_model.py Config.W) ─────────────────────
+WEIGHTS = {
+    "G1": 0.18, "G2": 0.18, "G3": 0.18,
+    "absences":  0.12,
+    "failures":  0.07,
+    "studytime": 0.05,
+    "famrel":    0.03,
+    "health":    0.03,
+    "static_pool": 0.05,
+}
+
+# ── Normalisation bounds (same as train_model.py Config.RANGES) ─────────────
+RANGES = {
+    "G1":        (0, 20),
+    "G2":        (0, 20),
+    "G3":        (0, 20),
+    "absences":  (0, 75),
+    "failures":  (0, 4),
+    "studytime": (1, 4),
+    "famrel":    (1, 5),
+    "health":    (1, 5),
+    "age":       (15, 70),
+}
+
+
 # ============================================================================
-# LOAD MODEL ON STARTUP
+# FEATURE ENGINEERING  (mirrors train_model.py engineer_features exactly)
+# ============================================================================
+
+def _norm(val, lo, hi):
+    """Clip-normalise a single value to [0, 1]."""
+    return max(0.0, min(1.0, (val - lo) / (hi - lo)))
+
+
+def engineer_features(raw: dict) -> dict:
+    """
+    Takes the 28 raw columns and returns a flat dict with all 58 features
+    the model expects.  Raw values are kept as-is; engineered values are
+    appended.
+    """
+    d = dict(raw)          # shallow copy — don't mutate caller's dict
+
+    G1, G2, G3 = d["G1"], d["G2"], d["G3"]
+
+    # ── Tier A: HIGH priority (grades + attendance) ──────────────────────
+    d["grade_trend_12"] = G2 - G1
+    d["grade_trend_23"] = G3 - G2
+    d["grade_trend_13"] = G3 - G1
+
+    d["grade_avg_all"] = (G1 + G2 + G3) / 3.0
+    d["grade_avg_12"]  = (G1 + G2) / 2.0
+
+    d["grade_min"]   = min(G1, G2, G3)
+    d["grade_max"]   = max(G1, G2, G3)
+    d["grade_range"] = d["grade_max"] - d["grade_min"]
+
+    d["drop_12"]          = int(G2 < G1)
+    d["drop_23"]          = int(G3 < G2)
+    d["consecutive_drop"] = int(d["drop_12"] and d["drop_23"])
+
+    LOW = 8
+    d["g1_low"]         = int(G1 < LOW)
+    d["g2_low"]         = int(G2 < LOW)
+    d["g3_low"]         = int(G3 < LOW)
+    d["all_grades_low"] = int(d["g1_low"] and d["g2_low"] and d["g3_low"])
+    d["any_grade_zero"] = int(G1 == 0 or G2 == 0 or G3 == 0)
+
+    d["absence_high"]      = int(d["absences"] > 10)
+    d["absence_very_high"] = int(d["absences"] > 25)
+    d["absence_x_grade"]   = d["absences"] * (20 - d["grade_avg_all"])
+
+    # ── Tier B: MEDIUM priority (behavioral / social) ─────────────────────
+    d["has_failures"]      = int(d["failures"] > 0)
+    d["multiple_failures"] = int(d["failures"] >= 2)
+    d["low_study"]         = int(d["studytime"] < 2)
+
+    d["failures_x_grade"]    = d["failures"] * (20 - d["grade_avg_all"])
+    d["study_effectiveness"] = d["studytime"] * d["grade_avg_all"]
+    d["social_health"]       = d["famrel"] + d["health"]
+    d["social_academic_risk"] = int(d["famrel"] <= 2 and d["grade_avg_all"] < 10)
+
+    # ── Tier C: LOW priority composites ───────────────────────────────────
+    d["financial_stress"]      = int(d["Debtor"] == 1 or d["Tuition fees up to date"] == 0)
+    d["has_any_support"]       = int(d["Scholarship holder"] == 1 or d["schoolsup"] == 1 or d["famsup"] == 1)
+    d["parent_occupation_sum"] = d["Mjob"] + d["Fjob"]
+
+    # ── Tier D: weighted_risk_score ───────────────────────────────────────
+    g1_risk     = 1 - _norm(G1,                *RANGES["G1"])
+    g2_risk     = 1 - _norm(G2,                *RANGES["G2"])
+    g3_risk     = 1 - _norm(G3,                *RANGES["G3"])
+    abs_risk    =     _norm(d["absences"],     *RANGES["absences"])
+    fail_risk   =     _norm(d["failures"],     *RANGES["failures"])
+    study_risk  = 1 - _norm(d["studytime"],    *RANGES["studytime"])
+    famrel_risk = 1 - _norm(d["famrel"],       *RANGES["famrel"])
+    health_risk = 1 - _norm(d["health"],       *RANGES["health"])
+
+    # Static pool: average of 11 binary / categorical risk signals
+    static_risk = (
+          _norm(d["Debtor"],                         0, 1)
+        + (1 - _norm(d["Tuition fees up to date"],  0, 1))
+        + (1 - _norm(d["Scholarship holder"],       0, 1))
+        + _norm(d["Educational special needs"],     0, 1)
+        + (1 - _norm(d["schoolsup"],                0, 1))
+        + (1 - _norm(d["famsup"],                   0, 1))
+        + (1 - _norm(d["paid"],                     0, 1))
+        + (1 - _norm(d["activities"],               0, 1))
+        + (1 - _norm(d["higher"],                   0, 1))
+        + (1 - _norm(d["internet"],                 0, 1))
+        + _norm(d["age"],                           *RANGES["age"])
+    ) / 11.0
+
+    d["weighted_risk_score"] = (
+          g1_risk     * WEIGHTS["G1"]
+        + g2_risk     * WEIGHTS["G2"]
+        + g3_risk     * WEIGHTS["G3"]
+        + abs_risk    * WEIGHTS["absences"]
+        + fail_risk   * WEIGHTS["failures"]
+        + study_risk  * WEIGHTS["studytime"]
+        + famrel_risk * WEIGHTS["famrel"]
+        + health_risk * WEIGHTS["health"]
+        + static_risk * WEIGHTS["static_pool"]
+    )
+
+    return d
+
+
+# ============================================================================
+# PREDICTION SERVICE
 # ============================================================================
 
 class PredictionService:
-    """Handles model loading and prediction logic"""
-    
+    """Loads artifacts once at startup; exposes validate → engineer → predict."""
+
     def __init__(self, model_dir):
-        self.model_dir = model_dir
-        self.model = None
-        self.scaler = None
-        self.feature_names = None
-        self.load_models()
-    
-    def load_models(self):
-        """Load all required model artifacts"""
-        try:
-            # Try different model files (in order of preference)
-            model_files = [
-                'randomforest_model.pkl',
-                'gradientboosting_model.pkl',
-                'logisticregression_model.pkl'
-            ]
-            
-            model_loaded = False
-            for model_file in model_files:
-                model_path = os.path.join(self.model_dir, model_file)
-                if os.path.exists(model_path):
-                    self.model = joblib.load(model_path)
-                    logger.info(f"✅ Loaded model: {model_file}")
-                    model_loaded = True
-                    break
-            
-            if not model_loaded:
-                raise FileNotFoundError("No model file found")
-            
-            # Load scaler
-            scaler_path = os.path.join(self.model_dir, 'scaler.pkl')
-            self.scaler = joblib.load(scaler_path)
-            logger.info("✅ Loaded scaler")
-            
-            # Load feature names
-            features_path = os.path.join(self.model_dir, 'feature_columns.pkl')
-            self.feature_names = joblib.load(features_path)
-            logger.info(f"✅ Loaded {len(self.feature_names)} feature names")
-            
-            logger.info("🚀 Prediction service ready!")
-            
-        except Exception as e:
-            logger.error(f"❌ Error loading models: {str(e)}")
-            raise
-    
+        self.model_dir    = model_dir
+        self.model        = None
+        self.scaler       = None
+        self.feature_names = None   # the 58-element list from training
+        self._load_artifacts()
+
+    # ── loading ───────────────────────────────────────────────────────────
+    def _load_artifacts(self):
+        # Model (prefer RandomForest, fall back to others)
+        for name in ("randomforest_model.pkl",
+                     "gradientboosting_model.pkl",
+                     "logisticregression_model.pkl"):
+            path = os.path.join(self.model_dir, name)
+            if os.path.exists(path):
+                self.model = joblib.load(path)
+                logger.info(f"✅ Loaded model: {name}")
+                break
+        if self.model is None:
+            raise FileNotFoundError("No model .pkl found in " + self.model_dir)
+
+        self.scaler = joblib.load(
+            os.path.join(self.model_dir, "scaler.pkl"))
+        logger.info("✅ Loaded scaler")
+
+        self.feature_names = joblib.load(
+            os.path.join(self.model_dir, "feature_columns.pkl"))
+        logger.info(f"✅ Loaded {len(self.feature_names)} feature names")
+
+        logger.info("🚀 Prediction service ready!")
+
+    # ── validation ────────────────────────────────────────────────────────
     def validate_input(self, data):
-        """
-        Validate input data
-        
-        Returns:
-            (is_valid, error_message)
-        """
-        if not data:
-            return False, "No data provided"
-        
-        if not isinstance(data, dict):
-            return False, "Data must be a JSON object"
-        
-        # Check if at least some required features are present
-        provided_features = set(data.keys())
-        required_features = set(self.feature_names)
-        
-        # Allow partial data (will fill missing with defaults)
-        if len(provided_features & required_features) == 0:
-            return False, f"No valid features found. Expected features: {self.feature_names[:5]}..."
-        
-        # Validate data types
-        for key, value in data.items():
-            if key in self.feature_names:
-                if not isinstance(value, (int, float)):
-                    return False, f"Feature '{key}' must be numeric, got {type(value).__name__}"
-        
+        if not data or not isinstance(data, dict):
+            return False, "Data must be a non-empty JSON object."
+
+        # At least one of G1/G2/G3/absences must be present (HIGH priority)
+        high_present = {"G1", "G2", "G3", "absences"} & set(data.keys())
+        if not high_present:
+            return False, (
+                "At least one HIGH-priority field required: G1, G2, G3, absences"
+            )
+
+        # Type-check every recognised key
+        for key in data:
+            if key in RAW_DEFAULTS and not isinstance(data[key], (int, float)):
+                return False, f"'{key}' must be numeric (got {type(data[key]).__name__})"
+
         return True, None
-    
-    def predict(self, data):
+
+    # ── prediction ────────────────────────────────────────────────────────
+    def predict(self, raw_data: dict):
         """
-        Make prediction with proper error handling
-        
-        Args:
-            data: Dictionary of student features
-            
-        Returns:
-            Dictionary with prediction results or error
+        Full pipeline: validate → fill defaults → engineer → order →
+        scale → predict → build response.
         """
         try:
-            # Validate input
-            is_valid, error_msg = self.validate_input(data)
-            if not is_valid:
-                return {"status": "error", "message": error_msg}, 400
-            
-            # Prepare input array (use 0 as default for missing features)
-            input_values = [data.get(feature, 0) for feature in self.feature_names]
-            X = np.array(input_values).reshape(1, -1)
-            
-            # Scale features
-            X_scaled = self.scaler.transform(X)
-            
-            # Get predictions
-            prediction = self.model.predict(X_scaled)[0]
-            probabilities = self.model.predict_proba(X_scaled)[0]
-            risk_score = float(probabilities[1])
-            
-            # Determine risk level with 3-tier system
+            ok, err = self.validate_input(raw_data)
+            if not ok:
+                return {"status": "error", "message": err}, 400
+
+            # 1. Fill missing raw columns with defaults
+            filled = {col: raw_data.get(col, RAW_DEFAULTS.get(col, 0))
+                      for col in RAW_INPUT_COLUMNS}
+
+            # 2. Derive all 29 engineered features
+            full = engineer_features(filled)
+
+            # 3. Order into a single-row DataFrame matching the model's columns
+            import pandas as pd
+            vector = pd.DataFrame(
+                [[full.get(f, 0.0) for f in self.feature_names]],
+                columns=self.feature_names,
+                dtype=np.float64,
+            )
+
+            # 4. Scale → predict
+            scaled      = self.scaler.transform(vector)
+            prediction  = self.model.predict(scaled)[0]
+            probs       = self.model.predict_proba(scaled)[0]
+            risk_score  = float(probs[1])          # P(Dropout)
+
+            # 5. Three-tier classification
             if risk_score >= 0.7:
-                risk_level = "HIGH"
-                emoji = "🔴"
-                recommendation = "Immediate intervention required"
+                risk_level, emoji = "HIGH",   "🔴"
+                recommendation     = "Immediate intervention required"
             elif risk_score >= 0.4:
-                risk_level = "MEDIUM"
-                emoji = "🟡"
-                recommendation = "Monitor closely and provide support"
+                risk_level, emoji = "MEDIUM", "🟡"
+                recommendation     = "Monitor closely and provide support"
             else:
-                risk_level = "LOW"
-                emoji = "🟢"
-                recommendation = "Continue current support"
-            
-            # Get feature importance for this prediction
-            top_factors = self._get_top_risk_factors(data, X_scaled[0])
-            
-            # Prepare response
-            response = {
+                risk_level, emoji = "LOW",    "🟢"
+                recommendation     = "Continue current support"
+
+            # 6. Human-readable risk factors
+            factors = self._get_risk_factors(filled)
+
+            return {
                 "status": "success",
                 "prediction": {
-                    "risk_level": risk_level,
-                    "risk_score": round(risk_score, 3),
+                    "risk_level":          risk_level,
+                    "risk_score":          round(risk_score, 3),
                     "dropout_probability": round(risk_score * 100, 1),
-                    "continue_probability": round(probabilities[0] * 100, 1),
-                    "confidence": f"{max(probabilities) * 100:.1f}%",
-                    "emoji": emoji,
-                    "recommendation": recommendation
+                    "continue_probability":round(float(probs[0]) * 100, 1),
+                    "confidence":          f"{max(probs) * 100:.1f}%",
+                    "emoji":               emoji,
+                    "recommendation":      recommendation,
                 },
-                "risk_factors": top_factors,
-                "features_used": len([v for v in input_values if v != 0]),
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            return response, 200
-            
+                "risk_factors":  factors,
+                "features_used": len([k for k in raw_data if k in RAW_DEFAULTS]),
+                "timestamp":     datetime.now().isoformat(),
+            }, 200
+
         except Exception as e:
-            logger.error(f"Prediction error: {str(e)}")
-            return {
-                "status": "error",
-                "message": f"Prediction failed: {str(e)}"
-            }, 500
-    
-    def _get_top_risk_factors(self, data, scaled_features):
+            logger.error(f"Prediction error: {e}", exc_info=True)
+            return {"status": "error", "message": f"Prediction failed: {e}"}, 500
+
+    # ── risk factor summary ───────────────────────────────────────────────
+    @staticmethod
+    def _get_risk_factors(d: dict) -> list:
         """
-        Identify top risk factors for this student
-        
-        Returns:
-            List of risk factor descriptions
+        Return plain-English risk factor strings based on the filled raw values.
+        Checks are ordered by priority tier (HIGH → MEDIUM → LOW).
         """
         factors = []
-        
-        # Check academic performance
-        g1 = data.get('G1', 0)
-        g2 = data.get('G2', 0)
-        if g1 < 10 or g2 < 10:
-            factors.append("Low academic performance")
-        
-        # Check attendance
-        absences = data.get('absences', 0)
-        if absences > 15:
-            factors.append("High number of absences")
+
+        # ── HIGH: grades ──
+        g1, g2, g3 = d["G1"], d["G2"], d["G3"]
+        avg = (g1 + g2 + g3) / 3.0
+
+        if g1 == 0 or g2 == 0 or g3 == 0:
+            factors.append("One or more semester grades are zero")
+        elif avg < 8:
+            factors.append("Very low academic performance (avg < 8 / 20)")
+        elif avg < 10:
+            factors.append("Below-average academic performance (avg < 10 / 20)")
+
+        if g2 < g1 and g3 < g2:
+            factors.append("Consecutive grade decline across all three semesters")
+        elif g2 < g1 or g3 < g2:
+            factors.append("Grade decline detected between semesters")
+
+        # ── HIGH: attendance ──
+        absences = d["absences"]
+        if absences > 25:
+            factors.append("Very high absences (> 25 days)")
         elif absences > 10:
-            factors.append("Moderate absences")
-        
-        # Check failures
-        failures = data.get('failures', 0)
+            factors.append("High absences (> 10 days)")
+
+        # ── MEDIUM: failures & study ──
+        failures = d["failures"]
         if failures >= 2:
-            factors.append("Multiple past failures")
+            factors.append("Multiple past class failures")
         elif failures == 1:
-            factors.append("One past failure")
-        
-        # Check study time
-        studytime = data.get('studytime', 2)
-        if studytime < 2:
-            factors.append("Low study time")
-        
-        # Check family support
-        famsup = data.get('famsup', 1)
-        if famsup == 0:
-            factors.append("Limited family support")
-        
-        # Check health
-        health = data.get('health', 5)
-        if health <= 2:
+            factors.append("One past class failure")
+
+        if d["studytime"] < 2:
+            factors.append("Low weekly study time (< 2 h)")
+
+        # ── MEDIUM: social / health ──
+        if d["famrel"] <= 2:
+            factors.append("Poor family relationship quality")
+        if d["health"] <= 2:
             factors.append("Poor health status")
-        
-        # Check alcohol consumption
-        dalc = data.get('Dalc', 1)
-        walc = data.get('Walc', 1)
-        if (dalc + walc) > 6:
-            factors.append("High alcohol consumption")
-        
+
+        # ── LOW: financial / support ──
+        if d["Debtor"] == 1:
+            factors.append("Student has outstanding debt")
+        if d["Tuition fees up to date"] == 0:
+            factors.append("Tuition fees are NOT up to date")
+        if d["Scholarship holder"] == 0 and d["schoolsup"] == 0 and d["famsup"] == 0:
+            factors.append("No scholarship or support network active")
+
         return factors if factors else ["No major risk factors identified"]
 
-# Initialize prediction service
+
+# ============================================================================
+# INITIALISE SERVICE
+# ============================================================================
+
 try:
     prediction_service = PredictionService(MODEL_DIR)
 except Exception as e:
-    logger.error(f"Failed to initialize prediction service: {str(e)}")
+    logger.error(f"Failed to initialize prediction service: {e}")
     prediction_service = None
 
+
 # ============================================================================
-# API ENDPOINTS
+# ENDPOINTS
 # ============================================================================
 
 @app.route('/', methods=['GET'])
 def home():
-    """API documentation endpoint"""
     return jsonify({
-        "name": "Student Dropout Prediction API",
-        "version": "2.0",
-        "status": "running",
+        "name":    "4See — Student Dropout Prediction API",
+        "version": "3.0",
+        "status":  "running",
         "endpoints": {
-            "/": "API documentation (this page)",
-            "/health": "Health check",
-            "/predict": "Make prediction (POST)",
-            "/features": "List required features (GET)",
-            "/test": "Test with sample data (GET)"
+            "/":              "API info (this page)",
+            "/health":        "Liveness check (GET)",
+            "/features":      "Raw columns the app must send (GET)",
+            "/predict":       "Single-student prediction (POST)",
+            "/batch":         "Multi-student prediction (POST)",
+            "/test":          "Smoke-test with sample profiles (GET)",
+            "/get-ai-advice": "LLM intervention advice (POST)",
         }
     })
 
+
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint for monitoring"""
     if prediction_service is None:
         return jsonify({
-            "status": "unhealthy",
+            "status":       "unhealthy",
             "model_loaded": False,
-            "error": "Prediction service not initialized"
+            "error":        "Prediction service not initialized"
         }), 503
-    
+
     return jsonify({
-        "status": "healthy",
-        "model_loaded": True,
-        "model_type": type(prediction_service.model).__name__,
+        "status":         "healthy",
+        "model_loaded":   True,
+        "model_type":     type(prediction_service.model).__name__,
         "features_count": len(prediction_service.feature_names),
-        "timestamp": datetime.now().isoformat()
+        "timestamp":      datetime.now().isoformat(),
     })
+
 
 @app.route('/features', methods=['GET'])
 def get_features():
-    """Return list of required features"""
+    """
+    Returns the 28 RAW columns the Flutter app must send.
+    Engineered features are computed server-side — the app doesn't need them.
+    """
     if prediction_service is None:
         return jsonify({"error": "Service not initialized"}), 503
-    
+
     return jsonify({
-        "features": prediction_service.feature_names,
-        "count": len(prediction_service.feature_names),
-        "description": "These are the features the model expects. Missing features will be filled with 0."
+        "raw_inputs": RAW_INPUT_COLUMNS,
+        "raw_count":  len(RAW_INPUT_COLUMNS),
+        "note": (
+            "Send only these 28 columns.  The API derives all internal "
+            "features automatically.  Missing columns use sensible defaults."
+        ),
+        "defaults": RAW_DEFAULTS,
     })
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
     """
-    Main prediction endpoint
-    
-    Expected JSON format:
-    {
-        "data": {
-            "absences": 10,
-            "G1": 12,
-            "G2": 13,
-            "failures": 0,
-            ...
-        }
-    }
+    Single-student prediction.
+
+    Body:
+        { "data": { "G1": 12, "G2": 10, "G3": 8, "absences": 15, … } }
+
+    The top-level "data" key is optional — root-level fields work too.
     """
     if prediction_service is None:
-        return jsonify({
-            "status": "error",
-            "message": "Prediction service not initialized"
-        }), 503
+        return jsonify({"status": "error",
+                        "message": "Prediction service not initialized"}), 503
 
-    # Get JSON data
     try:
-        request_data = request.get_json()
+        body = request.get_json(force=True)
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Invalid JSON: {str(e)}"
-        }), 400
-    
-    if not request_data:
-        return jsonify({
-            "status": "error",
-            "message": "No JSON data provided"
-        }), 400
-    
-    # Extract student data
-    student_data = request_data.get('data', request_data)
-    
-    # Make prediction
-    result, status_code = prediction_service.predict(student_data)
-    
-    # Log prediction
-    if result.get('status') == 'success':
-        logger.info(f"Prediction: {result['prediction']['risk_level']} "
-                   f"(score: {result['prediction']['risk_score']})")
-    
-    return jsonify(result), status_code
+        return jsonify({"status": "error", "message": f"Invalid JSON: {e}"}), 400
 
-@app.route('/test', methods=['GET'])
-def test_prediction():
-    """Test endpoint with sample data"""
-    if prediction_service is None:
-        return jsonify({"error": "Service not initialized"}), 503
-    
-    # Sample student profiles
-    samples = {
-        "low_risk": {
-            "absences": 2, "G1": 15, "G2": 15, "failures": 0, "age": 17,
-            "Medu": 4, "Fedu": 4, "studytime": 3, "famsup": 1, "health": 5,
-            "Dalc": 1, "Walc": 1, "goout": 2, "famsize": 1, "Pstatus": 1,
-            "school": 0, "address": 1, "internet": 1, "schoolsup": 0
-        },
-        "medium_risk": {
-            "absences": 12, "G1": 11, "G2": 10, "failures": 1, "age": 18,
-            "Medu": 2, "Fedu": 2, "studytime": 2, "famsup": 0, "health": 3,
-            "Dalc": 2, "Walc": 3, "goout": 4, "famsize": 0, "Pstatus": 1,
-            "school": 0, "address": 1, "internet": 1, "schoolsup": 0
-        },
-        "high_risk": {
-            "absences": 25, "G1": 8, "G2": 7, "failures": 2, "age": 19,
-            "Medu": 1, "Fedu": 1, "studytime": 1, "famsup": 0, "health": 2,
-            "Dalc": 4, "Walc": 4, "goout": 5, "famsize": 0, "Pstatus": 0,
-            "school": 0, "address": 0, "internet": 0, "schoolsup": 1
-        }
-    }
-    
-    results = {}
-    for profile_name, profile_data in samples.items():
-        result, _ = prediction_service.predict(profile_data)
-        results[profile_name] = result
-    
-    return jsonify({
-        "message": "Test predictions with sample profiles",
-        "results": results
-    })
+    if not body:
+        return jsonify({"status": "error", "message": "Empty body"}), 400
+
+    student = body.get("data", body)          # accept both wrappers
+    result, code = prediction_service.predict(student)
+
+    if result.get("status") == "success":
+        logger.info(
+            f"Prediction → {result['prediction']['risk_level']} "
+            f"(score {result['prediction']['risk_score']})"
+        )
+
+    return jsonify(result), code
+
 
 @app.route('/batch', methods=['POST'])
 def batch_predict():
     """
-    Batch prediction endpoint for multiple students
-    
-    Expected JSON format:
-    {
-        "students": [
-            {"id": "001", "data": {...}},
-            {"id": "002", "data": {...}}
-        ]
-    }
+    Multi-student prediction.
+
+    Body:
+        { "students": [ {"id": "S001", "data": {...}}, … ] }
+    """
+    if prediction_service is None:
+        return jsonify({"status": "error",
+                        "message": "Prediction service not initialized"}), 503
+
+    try:
+        body     = request.get_json(force=True)
+        students = body.get("students", [])
+
+        if not students:
+            return jsonify({"status": "error",
+                            "message": "No students provided"}), 400
+
+        results = []
+        for s in students:
+            sid  = s.get("id", "unknown")
+            data = s.get("data", {})
+            res, _ = prediction_service.predict(data)
+            res["student_id"] = sid
+            results.append(res)
+
+        # Quick summary counts
+        counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        for r in results:
+            if r.get("status") == "success":
+                counts[r["prediction"]["risk_level"]] += 1
+
+        return jsonify({
+            "status":      "success",
+            "count":       len(results),
+            "summary":     counts,
+            "predictions": results,
+        })
+
+    except Exception as e:
+        logger.error(f"Batch error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/test', methods=['GET'])
+def test_prediction():
+    """
+    Three realistic sample profiles exercising LOW / MEDIUM / HIGH risk.
+    All values match the columns and ranges in the actual dataset.
     """
     if prediction_service is None:
         return jsonify({"error": "Service not initialized"}), 503
-    
-    try:
-        request_data = request.get_json()
-        students = request_data.get('students', [])
-        
-        if not students:
-            return jsonify({
-                "status": "error",
-                "message": "No students provided"
-            }), 400
-        
-        results = []
-        for student in students:
-            student_id = student.get('id', 'unknown')
-            student_data = student.get('data', {})
-            
-            result, _ = prediction_service.predict(student_data)
-            result['student_id'] = student_id
-            results.append(result)
-        
-        return jsonify({
-            "status": "success",
-            "count": len(results),
-            "predictions": results
-        })
-        
-    except Exception as e:
-        logger.error(f"Batch prediction error: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-    
+
+    samples = {
+        "low_risk": {
+            # Strong grades, few absences, good support network
+            "Course": 9500, "Daytime/evening attendance": 1,
+            "Previous qualification": 1,
+            "Mjob": 8, "Fjob": 7,
+            "Educational special needs": 0,
+            "Debtor": 0, "Tuition fees up to date": 1,
+            "sex": 1, "Scholarship holder": 1,
+            "age": 18,
+            "G1": 16, "G2": 17, "G3": 15,
+            "famsize": 1, "Pstatus": 1, "guardian": 0,
+            "studytime": 3, "failures": 0,
+            "schoolsup": 1, "famsup": 1, "paid": 1,
+            "activities": 1, "higher": 1, "internet": 1,
+            "famrel": 5, "health": 5, "absences": 2,
+        },
+        "medium_risk": {
+            # Middling grades, moderate absences, limited support
+            "Course": 9147, "Daytime/evening attendance": 1,
+            "Previous qualification": 1,
+            "Mjob": 4, "Fjob": 3,
+            "Educational special needs": 0,
+            "Debtor": 1, "Tuition fees up to date": 0,
+            "sex": 0, "Scholarship holder": 0,
+            "age": 20,
+            "G1": 10, "G2": 9, "G3": 8,
+            "famsize": 1, "Pstatus": 1, "guardian": 0,
+            "studytime": 2, "failures": 1,
+            "schoolsup": 0, "famsup": 0, "paid": 0,
+            "activities": 0, "higher": 0, "internet": 1,
+            "famrel": 3, "health": 3, "absences": 14,
+        },
+        "high_risk": {
+            # Very low / zero grades, high absences, no support, debt
+            "Course": 9853, "Daytime/evening attendance": 0,
+            "Previous qualification": 9,
+            "Mjob": 1, "Fjob": 1,
+            "Educational special needs": 1,
+            "Debtor": 1, "Tuition fees up to date": 0,
+            "sex": 1, "Scholarship holder": 0,
+            "age": 35,
+            "G1": 2, "G2": 0, "G3": 0,
+            "famsize": 0, "Pstatus": 0, "guardian": 2,
+            "studytime": 1, "failures": 3,
+            "schoolsup": 0, "famsup": 0, "paid": 0,
+            "activities": 0, "higher": 0, "internet": 0,
+            "famrel": 1, "health": 1, "absences": 40,
+        },
+    }
+
+    results = {}
+    for name, data in samples.items():
+        res, _ = prediction_service.predict(data)
+        results[name] = res
+
+    return jsonify({
+        "message": "Smoke-test with 3 sample profiles",
+        "results": results,
+    })
+
+
 @app.route('/get-ai-advice', methods=['POST'])
 def generate_advice():
-    data = request.json
+    """Forward to the LLM helper for intervention suggestions."""
+    if not _HAS_AI:
+        return jsonify({
+            "status":  "error",
+            "message": "aiengine module not available — cannot generate advice."
+        }), 503
 
-    # 1. Get data from the frontend request
-    name = data.get('name', 'Student')
-    risk = data.get('risk_level', 'Medium')
-    issues = data.get('academic_issues', [])
-    quiz = data.get('quiz_flags', {})
+    data   = request.get_json(force=True) or {}
+    name   = data.get("name", "Student")
+    risk   = data.get("risk_level", "Medium")
+    issues = data.get("academic_issues", [])
+    quiz   = data.get("quiz_flags", {})
 
-    # 2. Call YOUR AI function
     ai_response = get_student_advice(name, risk, issues, quiz)
-
-    # 3. Send it back to the app
-    return jsonify(ai_response)    
+    return jsonify(ai_response)
 
 
 # ============================================================================
@@ -461,24 +660,19 @@ def generate_advice():
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({
-        "status": "error",
+        "status":  "error",
         "message": "Endpoint not found",
-        "available_endpoints": ["/", "/health", "/predict", "/features", "/test"]
+        "available": ["/", "/health", "/features", "/predict", "/batch", "/test"]
     }), 404
 
 @app.errorhandler(405)
 def method_not_allowed(e):
-    return jsonify({
-        "status": "error",
-        "message": "Method not allowed for this endpoint"
-    }), 405
+    return jsonify({"status": "error", "message": "Method not allowed"}), 405
 
 @app.errorhandler(500)
 def internal_error(e):
-    return jsonify({
-        "status": "error",
-        "message": "Internal server error"
-    }), 500
+    return jsonify({"status": "error", "message": "Internal server error"}), 500
+
 
 # ============================================================================
 # MAIN
@@ -486,22 +680,17 @@ def internal_error(e):
 
 if __name__ == '__main__':
     if prediction_service is None:
-        logger.error("Cannot start server: Prediction service failed to initialize")
-        logger.error("Make sure model files exist in ./models/")
+        logger.error("Cannot start: Prediction service failed to initialize.")
+        logger.error("Make sure ./models/ contains the .pkl files from training.")
         exit(1)
-    
-    logger.info("="*80)
-    logger.info("🚀 Starting Flask API Server")
-    logger.info("="*80)
-    logger.info(f"Model: {type(prediction_service.model).__name__}")
-    logger.info(f"Features: {len(prediction_service.feature_names)}")
-    logger.info(f"Endpoints available at http://localhost:5000")
-    logger.info("="*80)
-    
-    # Run server
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=True  # Set to True for development
-    )
-    # --- AI ADVICE ENDPOINT ---
+
+    logger.info("=" * 70)
+    logger.info("🚀 4See Flask API")
+    logger.info("=" * 70)
+    logger.info(f"   Model   : {type(prediction_service.model).__name__}")
+    logger.info(f"   Features: {len(prediction_service.feature_names)} "
+                f"(28 raw + 29 engineered + 1 composite)")
+    logger.info(f"   URL     : http://localhost:5000")
+    logger.info("=" * 70)
+
+    app.run(host='0.0.0.0', port=5000, debug=True)
