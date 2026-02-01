@@ -675,7 +675,7 @@ def main():
         save_models(models, scaler, final_feats, encoders, results)
 
         print("\n" + "=" * 70)
-        print(" ✅ PIPELINE COMPLETE")
+        print("PIPELINE COMPLETE")
         print("=" * 70)
         print(f"  Students  : {len(df):,}")
         print(f"  Features  : {len(final_feats)}")
