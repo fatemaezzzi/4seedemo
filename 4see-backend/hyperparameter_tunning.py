@@ -86,12 +86,12 @@ class Config:
     # Tuning methods to run
     RUN_GRID_SEARCH = True
     RUN_RANDOM_SEARCH = True
-    RUN_OPTUNA = HAS_OPTUNA
+    RUN_OPTUNA = True
     RUN_ENSEMBLE = True
     
     # Number of iterations for random/optuna search
-    N_ITER_RANDOM = 50
-    N_TRIALS_OPTUNA = 100
+    N_ITER_RANDOM = 100
+    N_TRIALS_OPTUNA = 200
 
 
 # ============================================================================
