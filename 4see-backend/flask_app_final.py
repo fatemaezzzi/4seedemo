@@ -235,59 +235,13 @@ def engineer_features(raw: dict) -> dict:
 # ============================================================================
 
 class PredictionService:
-    """Loads artifacts once at startup; exposes validate → engineer → predict."""
-
     def __init__(self, model_dir):
-        self.model_dir    = model_dir
-        self.model        = None
-        self.scaler       = None
-        self.feature_names = None   # the 58-element list from training
+        self.model_dir = model_dir
+        self.model = None
+        self.scaler = None
+        self.feature_names = None
         self._load_artifacts()
 
-    # ── loading ───────────────────────────────────────────────────────────
-    def _load_artifacts(self):
-        # Model (prefer RandomForest, fall back to others)
-        for name in ("randomforest_model.pkl",
-                     "gradientboosting_model.pkl",
-                     "logisticregression_model.pkl"):
-            path = os.path.join(self.model_dir, name)
-            if os.path.exists(path):
-                self.model = joblib.load(path)
-                logger.info(f"✅ Loaded model: {name}")
-                break
-        if self.model is None:
-            raise FileNotFoundError("No model .pkl found in " + self.model_dir)
-
-        self.scaler = joblib.load(
-            os.path.join(self.model_dir, "scaler.pkl"))
-        logger.info("✅ Loaded scaler")
-
-        self.feature_names = joblib.load(
-            os.path.join(self.model_dir, "feature_columns.pkl"))
-        logger.info(f"✅ Loaded {len(self.feature_names)} feature names")
-
-        logger.info("🚀 Prediction service ready!")
-
-    # ── validation ────────────────────────────────────────────────────────
-    def validate_input(self, data):
-        if not data or not isinstance(data, dict):
-            return False, "Data must be a non-empty JSON object."
-
-        # At least one of G1/G2/G3/absences must be present (HIGH priority)
-        high_present = {"G1", "G2", "G3", "absences"} & set(data.keys())
-        if not high_present:
-            return False, (
-                "At least one HIGH-priority field required: G1, G2, G3, absences"
-            )
-
-        # Type-check every recognised key
-        for key in data:
-            if key in RAW_DEFAULTS and not isinstance(data[key], (int, float)):
-                return False, f"'{key}' must be numeric (got {type(data[key]).__name__})"
-
-        return True, None
-
-    # ── prediction ────────────────────────────────────────────────────────
     def predict(self, raw_data: dict):
         """
         Full pipeline: validate → fill defaults → engineer → order →
@@ -352,8 +306,25 @@ class PredictionService:
         except Exception as e:
             logger.error(f"Prediction error: {e}", exc_info=True)
             return {"status": "error", "message": f"Prediction failed: {e}"}, 500
+        
+    def validate_input(self, data):
+        if not data or not isinstance(data, dict):
+            return False, "Data must be a non-empty JSON object."
 
-    # ── risk factor summary ───────────────────────────────────────────────
+        # At least one of G1/G2/G3/absences must be present (HIGH priority)
+        high_present = {"G1", "G2", "G3", "absences"} & set(data.keys())
+        if not high_present:
+            return False, (
+                "At least one HIGH-priority field required: G1, G2, G3, absences"
+            )
+
+        # Type-check every recognised key
+        for key in data:
+            if key in RAW_DEFAULTS and not isinstance(data[key], (int, float)):
+                return False, f"'{key}' must be numeric (got {type(data[key]).__name__})"
+
+        return True, None
+
     @staticmethod
     def _get_risk_factors(d: dict) -> list:
         """
@@ -411,6 +382,51 @@ class PredictionService:
 
         return factors if factors else ["No major risk factors identified"]
 
+    def _load_artifacts(self):
+        # Priority 1: High-performance Ensembles from tuning
+        # Priority 2: Individual Tuned Models
+        # Priority 3: Original Base Models
+        model_priority = [
+            "stackingensemble_model.pkl", 
+            "votingensemble_model.pkl",
+            "optuna_randomforest_model.pkl",
+            "random_randomforest_model.pkl",
+            "randomforest_model.pkl"
+        ]
+        
+        for name in model_priority:
+            path = os.path.join(self.model_dir, name)
+            if os.path.exists(path):
+                self.model = joblib.load(path)
+                logger.info(f"✅ Loaded optimal model: {name}")
+                break
+        
+        if self.model is None:
+            raise FileNotFoundError(f"No valid models found in {self.model_dir}")
+
+        # Load tuned scaler and features
+        self.scaler = joblib.load(os.path.join(self.model_dir, "scaler.pkl"))
+        self.feature_names = joblib.load(os.path.join(self.model_dir, "feature_columns.pkl"))
+        logger.info(f"✅ Using {len(self.feature_names)} features for prediction")
+
+    # Inside the PredictionService class in flask_app_final.py
+    def get_model_info(self):
+        """Retrieves accuracy and tuning details from metadata."""
+        try:
+            metadata_path = os.path.join(self.model_dir, "model_metadata.pkl")
+            if os.path.exists(metadata_path):
+                metadata = joblib.load(metadata_path)
+                return {
+                    "status": "success",
+                    "model_name": metadata.get('best_model'),
+                    "performance_metrics": metadata.get('performance'),
+                    "tuning_methods_used": metadata.get('tuning_methods'),
+                    "feature_count": len(metadata.get('features', [])),
+                    "last_tuned": datetime.fromtimestamp(os.path.getmtime(metadata_path)).isoformat()
+                }
+            return {"status": "error", "message": "Metadata file not found."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
 # ============================================================================
 # INITIALISE SERVICE
@@ -426,6 +442,18 @@ except Exception as e:
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
+
+@app.route('/model-info', methods=['GET'])
+def model_info():
+    """
+    Returns the performance summary of the current tuned model.
+    Data is pulled from the hyperparameter tuning metadata.
+    """
+    if prediction_service is None:
+        return jsonify({"status": "error", "message": "Service not initialized"}), 503
+    
+    info = prediction_service.get_model_info()
+    return jsonify(info)
 
 @app.route('/', methods=['GET'])
 def home():
@@ -679,18 +707,13 @@ def internal_error(e):
 # ============================================================================
 
 if __name__ == '__main__':
-    if prediction_service is None:
-        logger.error("Cannot start: Prediction service failed to initialize.")
-        logger.error("Make sure ./models/ contains the .pkl files from training.")
-        exit(1)
-
-    logger.info("=" * 70)
-    logger.info("🚀 4See Flask API")
-    logger.info("=" * 70)
-    logger.info(f"   Model   : {type(prediction_service.model).__name__}")
-    logger.info(f"   Features: {len(prediction_service.feature_names)} "
-                f"(28 raw + 29 engineered + 1 composite)")
-    logger.info(f"   URL     : http://localhost:5000")
-    logger.info("=" * 70)
-
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Point to the NEW tuned models directory
+    TUNED_MODEL_DIR = './models_tuned'
+    try:
+        prediction_service = PredictionService(TUNED_MODEL_DIR)
+    except Exception as e:
+        logger.error(f"Failed to load tuned models: {e}")
+        # Fallback to original models if tuning failed
+        prediction_service = PredictionService('./models')
+    
+    app.run(host='0.0.0.0', port=5000)
