@@ -7,10 +7,8 @@ import 'scan_attendance.dart'; // Import your new file
 // import 'welcome_page_first.dart';
 import 'simple_api_test.dart';
 import 'welcome_page_seond.dart';
-import 'auth_service.dart';
 import 'sign_up_page.dart';
 import 'login_page.dart';
-import 'student_quiz_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
