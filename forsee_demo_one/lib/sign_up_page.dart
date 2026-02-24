@@ -1,0 +1,415 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'auth_service.dart';
+import 'app_design_widgets.dart';
+
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
+
+  @override
+  State<SignUpPage> createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<SignUpPage>
+    with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  final _classroomCtrl = TextEditingController();
+  final _schoolIdCtrl = TextEditingController();
+
+  final _authService = AuthService();
+
+  UserRole _selectedRole = UserRole.student;
+  bool _loading = false;
+  bool _obscurePass = true;
+  bool _obscureConfirm = true;
+  String? _errorMessage;
+
+  late AnimationController _animCtrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _anim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic);
+    _animCtrl.forward();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Accept role passed from AccountSelectionPage via route arguments
+    final arg = ModalRoute.of(context)?.settings.arguments;
+    if (arg is String) {
+      final role = UserRole.values.firstWhere(
+            (r) => r.name == arg,
+        orElse: () => UserRole.student,
+      );
+      setState(() => _selectedRole = role);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
+    _classroomCtrl.dispose();
+    _schoolIdCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+    try {
+      await _authService.signUp(
+        email: _emailCtrl.text,
+        password: _passwordCtrl.text,
+        name: _nameCtrl.text,
+        role: _selectedRole,
+        classroomId: _selectedRole == UserRole.student
+            ? _classroomCtrl.text.trim()
+            : null,
+        schoolId: _selectedRole != UserRole.student
+            ? _schoolIdCtrl.text.trim()
+            : null,
+      );
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/home_page');
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _friendlyError(e.code));
+    } catch (e) {
+      debugPrint('SignUp error: $e');
+      setState(() => _errorMessage = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _friendlyError(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return 'An account already exists with this email.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'Password must be at least 6 characters.';
+      default:
+        return 'Sign up failed. Please try again.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF3B1A2E),
+      body: Stack(
+        children: [
+          // Mint blobs
+          Positioned(
+            top: 0, right: 0,
+            child: MintBlob(width: 200, height: 300),
+          ),
+          Positioned(
+            bottom: 0, left: 0,
+            child: MintBlob(width: 160, height: 240, flip: true),
+          ),
+
+          SafeArea(
+            child: FadeTransition(
+              opacity: _anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.06),
+                  end: Offset.zero,
+                ).animate(_anim),
+                child: Column(
+                  children: [
+                    // Back + Logo header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios,
+                                color: Colors.white70, size: 20),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const Spacer(),
+                          const FourSeeLogo(size: 36),
+                          const Spacer(),
+                          const SizedBox(width: 48),
+                        ],
+                      ),
+                    ),
+
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding:
+                        const EdgeInsets.symmetric(horizontal: 32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 8),
+
+                            // Role chips
+                            const Text(
+                              'I am a...',
+                              style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 13,
+                                  letterSpacing: 1),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: UserRole.values
+                                  .map((role) => Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 3),
+                                  child: RoleChip(
+                                    role: role,
+                                    selected: _selectedRole == role,
+                                    onTap: () => setState(
+                                            () => _selectedRole = role),
+                                  ),
+                                ),
+                              ))
+                                  .toList(),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Form fields
+                            Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  PinkField(
+                                    controller: _nameCtrl,
+                                    hint: 'Full Name',
+                                    icon: Icons.person_outline,
+                                    validator: (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Enter your name'
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  PinkField(
+                                    controller: _emailCtrl,
+                                    hint: 'Email ID',
+                                    icon: Icons.email_outlined,
+                                    keyboardType: TextInputType.emailAddress,
+                                    validator: (v) =>
+                                    (v == null || !v.contains('@'))
+                                        ? 'Enter a valid email'
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  PinkField(
+                                    controller: _passwordCtrl,
+                                    hint: 'Password',
+                                    icon: Icons.lock_outline,
+                                    obscureText: _obscurePass,
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePass
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        color: const Color(0xFF8B5E6A),
+                                        size: 20,
+                                      ),
+                                      onPressed: () => setState(
+                                              () => _obscurePass = !_obscurePass),
+                                    ),
+                                    validator: (v) =>
+                                    (v == null || v.length < 6)
+                                        ? 'Min 6 characters'
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  PinkField(
+                                    controller: _confirmCtrl,
+                                    hint: 'Confirm Password',
+                                    icon: Icons.lock_outline,
+                                    obscureText: _obscureConfirm,
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscureConfirm
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        color: const Color(0xFF8B5E6A),
+                                        size: 20,
+                                      ),
+                                      onPressed: () => setState(() =>
+                                      _obscureConfirm = !_obscureConfirm),
+                                    ),
+                                    validator: (v) =>
+                                    v != _passwordCtrl.text
+                                        ? 'Passwords do not match'
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 14),
+
+                                  // Role-specific field
+                                  if (_selectedRole == UserRole.student)
+                                    PinkField(
+                                      controller: _classroomCtrl,
+                                      hint: 'Classroom Code',
+                                      icon: Icons.class_outlined,
+                                      validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                          ? 'Enter classroom code'
+                                          : null,
+                                    ),
+                                  if (_selectedRole == UserRole.teacher ||
+                                      _selectedRole == UserRole.admin)
+                                    PinkField(
+                                      controller: _schoolIdCtrl,
+                                      hint: 'School ID',
+                                      icon: Icons.domain_outlined,
+                                      validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                          ? 'Enter your school ID'
+                                          : null,
+                                    ),
+                                ],
+                              ),
+                            ),
+
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 12),
+                              ErrorBanner(message: _errorMessage!),
+                            ],
+
+                            const SizedBox(height: 22),
+                            ContinueButton(
+                              label: 'Continue',
+                              loading: _loading,
+                              onTap: _submit,
+                            ),
+                            const SizedBox(height: 22),
+                            const OrDivider(),
+                            const SizedBox(height: 18),
+                            const SocialButtons(),
+                            const SizedBox(height: 24),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'Already have an account? ',
+                                  style: TextStyle(
+                                      color: Colors.white38, fontSize: 13),
+                                ),
+                                GestureDetector(
+                                  onTap: () =>
+                                      Navigator.pushReplacementNamed(
+                                          context, '/login_page'),
+                                  child: const Text(
+                                    'Log In',
+                                    style: TextStyle(
+                                      color: Color(0xFFE8A0B4),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROLE CHIP WIDGET (local to sign_up only, so kept here)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RoleChip extends StatelessWidget {
+  final UserRole role;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const _labels = {
+    UserRole.student: 'Student',
+    UserRole.teacher: 'Teacher',
+    UserRole.admin: 'Admin',
+  };
+
+  static const _icons = {
+    UserRole.student: Icons.person_outline,
+    UserRole.teacher: Icons.school_outlined,
+    UserRole.admin: Icons.admin_panel_settings_outlined,
+  };
+
+  const RoleChip({
+    super.key,
+    required this.role,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFFF4B8C8)
+              : const Color(0xFF2A0F20).withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? const Color(0xFFF4B8C8) : Colors.white12,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              _icons[role]!,
+              size: 22,
+              color: selected ? const Color(0xFF3B1A2E) : Colors.white54,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _labels[role]!,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? const Color(0xFF3B1A2E)
+                    : Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
