@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/auth_wrapper.dart';
+import 'package:forsee_demo_one/pages/profile/admin_profile_page.dart';
+import 'package:forsee_demo_one/pages/profile/student_profile_page.dart';
+import 'package:forsee_demo_one/pages/profile/teacher_profile_page.dart';
 import 'package:forsee_demo_one/pages/settings/admin_settings_page.dart';
 import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
 import 'package:forsee_demo_one/pages/settings/teacher_settings_page.dart';
@@ -41,145 +44,184 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Home")),
-      body: Center(
-    child: Column(
-    mainAxisSize: MainAxisSize.min, // keeps column tight
-      children: [
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const ScanAttendanceScreen(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child : Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // keeps column tight
+            children: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ScanAttendanceScreen(),
+                    ),
+                  );
+                },
+                child: const Text("Go to Attendance Scanner"),
               ),
-            );
-          },
-          child: const Text("Go to Attendance Scanner"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const WelcomePageFirst(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WelcomePageFirst(),
+                    ),
+                  );
+                },
+                child: const Text("WelcomePage"),
               ),
-            );
-          },
-          child: const Text("WelcomePage"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const InputTestPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const InputTestPage(),
+                    ),
+                  );
+                },
+                child: const Text("Testing Page"),
               ),
-            );
-          },
-          child: const Text("Testing Page"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SimpleAPITest(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SimpleAPITest(),
+                    ),
+                  );
+                },
+                child: const Text("API Testing Page"),
               ),
-            );
-          },
-          child: const Text("API Testing Page"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const StudentQuizPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StudentQuizPage(),
+                    ),
+                  );
+                },
+                child: const Text("Quiz"),
               ),
-            );
-          },
-          child: const Text("Quiz"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SignUpPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SignUpPage(),
+                    ),
+                  );
+                },
+                child: const Text("Signup"),
               ),
-            );
-          },
-          child: const Text("Signup"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const LoginPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LoginPage(),
+                    ),
+                  );
+                },
+                child: const Text("LoginPage"),
               ),
-            );
-          },
-          child: const Text("LoginPage"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const WelcomePageSecond(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WelcomePageSecond(),
+                    ),
+                  );
+                },
+                child: const Text("welcome2"),
               ),
-            );
-          },
-          child: const Text("welcome2"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AdminSettingsPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AdminSettingsPage(),
+                    ),
+                  );
+                },
+                child: const Text("adminSettingsPage"),
               ),
-            );
-          },
-          child: const Text("adminSettingsPage"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const TeacherSettingsPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TeacherSettingsPage(),
+                    ),
+                  );
+                },
+                child: const Text("teacherSettingsPage"),
               ),
-            );
-          },
-          child: const Text("teacherSettingsPage"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const StudentSettingsPage(),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StudentSettingsPage(),
+                    ),
+                  );
+                },
+                child: const Text("studentSettingsPage"),
               ),
-            );
-          },
-          child: const Text("studentSettingsPage"),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AdminProfilePage(),
+                    ),
+                  );
+                },
+                child: const Text("adminProfilePage"),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StudentProfilePage(),
+                    ),
+                  );
+                },
+                child: const Text("studentProfilePage"),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TeacherProfilePage(),
+                    ),
+                  );
+                },
+                child: const Text("teacherProfilePage"),
+              ),
+              const SizedBox(height: 16)
+            ],
+          ),
         ),
-        const SizedBox(height: 16)
-      ],
-    ),
-    ),
+      )
     );
   }
 }

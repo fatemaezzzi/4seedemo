@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable
+
 import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../quiz_data.dart';

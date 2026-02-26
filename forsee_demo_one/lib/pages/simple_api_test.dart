@@ -16,6 +16,7 @@ class _SimpleAPITestState extends State<SimpleAPITest> {
   bool _isLoading = false;
   String _result = '';
   String _error = '';
+  // ignore: unused_field
   String _currentEndpoint = '';
 
   // Test multiple possible endpoints
