@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "firebase-tools": "^15.3.1",
-    "pip": "^0.0.1"
-  },
-  "devDependencies": {
-    "@gradio/client": "^2.0.3"
-  }
-}

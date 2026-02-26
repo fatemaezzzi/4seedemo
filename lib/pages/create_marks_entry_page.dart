@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forc/pages/UploadHubPage.dart';
-import 'package:intl/intl.dart'; // Add this to pubspec.yaml for date formatting
+import 'package:intl/intl.dart';
 
 class CreateMarksEntryPage extends StatefulWidget {
   const CreateMarksEntryPage({super.key});
@@ -10,9 +10,34 @@ class CreateMarksEntryPage extends StatefulWidget {
 }
 
 class _CreateMarksEntryPageState extends State<CreateMarksEntryPage> {
-  DateTime? selectedDate;
+  final _formKey = GlobalKey<FormState>();
 
-  Future<void> _selectDate(BuildContext context) async {
+  final TextEditingController _examTitleController = TextEditingController();
+  final TextEditingController _maxMarksController = TextEditingController();
+  final TextEditingController _passMarksController = TextEditingController();
+
+  DateTime? _selectedDate;
+  String? _selectedSubject;
+  String? _selectedClass;
+
+  final List<String> _subjects = [
+    'Science',
+    'Mathematics',
+    'English',
+    'History',
+    'Geography',
+    'Computer Science',
+  ];
+
+  final List<String> _classes = [
+    'Class 9-C',
+    'Class 10-A',
+    'Class 12-B',
+  ];
+
+  // ── DATE PICKER ─────────────────────────────────────────────────────────────
+
+  Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -22,105 +47,593 @@ class _CreateMarksEntryPageState extends State<CreateMarksEntryPage> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF512D38), // Header background
-              onPrimary: Colors.white, // Header text
-              onSurface: Color(0xFF3B2F2F), // Body text
+              primary: Color(0xFF512D38),
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF3B2F2F),
+              surface: Color(0xFFF4BFDB),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF512D38),
+              ),
             ),
           ),
           child: child!,
         );
       },
     );
-    if (picked != null && picked != selectedDate) {
-      setState(() {
-        selectedDate = picked;
-      });
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
     }
   }
+
+  // ── VALIDATION & SUBMIT ──────────────────────────────────────────────────────
+
+  void _onNext() {
+    // Validate all fields
+    bool formValid = _formKey.currentState?.validate() ?? false;
+    bool dateValid = _selectedDate != null;
+    bool subjectValid = _selectedSubject != null;
+    bool classValid = _selectedClass != null;
+
+    if (!formValid || !dateValid || !subjectValid || !classValid) {
+      // Show which fields are missing
+      String missing = '';
+      if (!dateValid) missing += '• Date of Exam\n';
+      if (!subjectValid) missing += '• Subject\n';
+      if (!classValid) missing += '• Class\n';
+
+      if (missing.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Please fill in:\n$missing',
+              style: const TextStyle(fontFamily: 'Pridi'),
+            ),
+            backgroundColor: const Color(0xFF3B2028),
+            behavior: SnackBarBehavior.floating,
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Navigate to UploadHubPage with data
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UploadHubPage(
+          examTitle: _examTitleController.text.trim(),
+          date: DateFormat('dd/MM/yyyy').format(_selectedDate!),
+          maxMarks: int.tryParse(_maxMarksController.text.trim()) ?? 100,
+          passMarks: int.tryParse(_passMarksController.text.trim()) ?? 35,
+          subject: _selectedSubject!,
+          className: _selectedClass!,
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _examTitleController.dispose();
+    _maxMarksController.dispose();
+    _passMarksController.dispose();
+    super.dispose();
+  }
+
+  // ── BUILD ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF512D38),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text("Create New Marks Entry", style: TextStyle(fontFamily: 'Pridi', color: Colors.white)),
-        actions: [const Icon(Icons.add_circle_outline, color: Colors.white), const SizedBox(width: 20)],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: SafeArea(
         child: Column(
           children: [
-            _buildField("Exam Title:", "e.g. Mid-Term I"),
+            // ── HEADER ───────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 20, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new,
+                        color: Colors.white, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'Create Marks Entry',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Pridi',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-            // --- CALENDAR PICKER FIELD ---
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Date of Exam:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () => _selectDate(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            const SizedBox(height: 6),
+
+            // ── FORM CARD ─────────────────────────────────────────────────────
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B2028),
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          selectedDate == null ? "Select Date" : DateFormat('dd/MM/yyyy').format(selectedDate!),
-                          style: TextStyle(color: selectedDate == null ? Colors.black45 : Colors.black),
+                        // Progress indicator
+                        _buildStepIndicator(),
+
+                        const SizedBox(height: 28),
+
+                        // ── Exam Title ──────────────────────────────────────
+                        _buildLabel('Exam Title'),
+                        const SizedBox(height: 8),
+                        _buildTextField(
+                          controller: _examTitleController,
+                          hint: 'e.g. Mid-Term I',
+                          icon: Icons.edit_note,
+                          validator: (val) => (val == null || val.trim().isEmpty)
+                              ? 'Please enter exam title'
+                              : null,
                         ),
-                        const Icon(Icons.calendar_month, color: Color(0xFF512D38)),
+
+                        const SizedBox(height: 20),
+
+                        // ── Subject dropdown ────────────────────────────────
+                        _buildLabel('Subject'),
+                        const SizedBox(height: 8),
+                        _buildDropdown(
+                          value: _selectedSubject,
+                          hint: 'Select Subject',
+                          icon: Icons.book_outlined,
+                          items: _subjects,
+                          onChanged: (val) =>
+                              setState(() => _selectedSubject = val),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ── Class dropdown ──────────────────────────────────
+                        _buildLabel('Class'),
+                        const SizedBox(height: 8),
+                        _buildDropdown(
+                          value: _selectedClass,
+                          hint: 'Select Class',
+                          icon: Icons.class_outlined,
+                          items: _classes,
+                          onChanged: (val) =>
+                              setState(() => _selectedClass = val),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ── Date picker ─────────────────────────────────────
+                        _buildLabel('Date of Exam'),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: _selectDate,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4A3439),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: _selectedDate != null
+                                    ? const Color(0xFFE9C2D7).withOpacity(0.6)
+                                    : Colors.transparent,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF512D38),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.calendar_month,
+                                      color: Color(0xFFE9C2D7), size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  _selectedDate == null
+                                      ? 'Select Date'
+                                      : DateFormat('dd MMMM yyyy')
+                                      .format(_selectedDate!),
+                                  style: TextStyle(
+                                    color: _selectedDate == null
+                                        ? Colors.white38
+                                        : Colors.white,
+                                    fontSize: 15,
+                                    fontFamily: 'Pridi',
+                                  ),
+                                ),
+                                const Spacer(),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: _selectedDate != null
+                                      ? const Color(0xFFE9C2D7)
+                                      : Colors.white24,
+                                  size: 14,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ── Max & Pass Marks side by side ───────────────────
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildLabel('Max Marks'),
+                                  const SizedBox(height: 8),
+                                  _buildTextField(
+                                    controller: _maxMarksController,
+                                    hint: '100',
+                                    icon: Icons.score,
+                                    keyboardType: TextInputType.number,
+                                    validator: (val) {
+                                      if (val == null || val.trim().isEmpty) {
+                                        return 'Required';
+                                      }
+                                      if (int.tryParse(val.trim()) == null) {
+                                        return 'Numbers only';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildLabel('Pass Marks'),
+                                  const SizedBox(height: 8),
+                                  _buildTextField(
+                                    controller: _passMarksController,
+                                    hint: '35',
+                                    icon: Icons.check_circle_outline,
+                                    keyboardType: TextInputType.number,
+                                    validator: (val) {
+                                      if (val == null || val.trim().isEmpty) {
+                                        return 'Required';
+                                      }
+                                      if (int.tryParse(val.trim()) == null) {
+                                        return 'Numbers only';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 36),
+
+                        // ── Summary preview (if filled) ─────────────────────
+                        if (_examTitleController.text.isNotEmpty &&
+                            _selectedDate != null &&
+                            _selectedSubject != null &&
+                            _selectedClass != null)
+                          _buildSummaryPreview(),
+
+                        const SizedBox(height: 24),
+
+                        // ── Next button ─────────────────────────────────────
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton(
+                            onPressed: _onNext,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE9C2D7),
+                              foregroundColor: const Color(0xFF3B2028),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Next: Enter Scores',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Pridi',
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Icon(Icons.arrow_forward_ios, size: 16),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 15),
-              ],
+              ),
             ),
-
-            _buildField("Maximum Marks:", "50"),
-            const Spacer(),
-            _bottomButton(context, "Next: Enter Scores", const UploadHubPage()),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildField(String label, String hint) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        TextField(
-          decoration: InputDecoration(
-            hintText: hint,
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+  // ── SUMMARY PREVIEW ─────────────────────────────────────────────────────────
+
+  Widget _buildSummaryPreview() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF512D38),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: const Color(0xFFE9C2D7).withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Entry Summary',
+            style: TextStyle(
+              color: Color(0xFFE9C2D7),
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Pridi',
+              fontSize: 14,
+            ),
           ),
-        ),
-        const SizedBox(height: 15),
+          const SizedBox(height: 10),
+          _summaryRow(Icons.edit_note, _examTitleController.text.trim()),
+          if (_selectedSubject != null)
+            _summaryRow(Icons.book_outlined, _selectedSubject!),
+          if (_selectedClass != null)
+            _summaryRow(Icons.class_outlined, _selectedClass!),
+          if (_selectedDate != null)
+            _summaryRow(Icons.calendar_month,
+                DateFormat('dd MMMM yyyy').format(_selectedDate!)),
+          if (_maxMarksController.text.isNotEmpty)
+            _summaryRow(Icons.score,
+                'Max: ${_maxMarksController.text}  |  Pass: ${_passMarksController.text.isEmpty ? '?' : _passMarksController.text}'),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white38, size: 15),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STEP INDICATOR ───────────────────────────────────────────────────────────
+
+  Widget _buildStepIndicator() {
+    return Row(
+      children: [
+        _step('1', 'Setup', true),
+        _stepLine(true),
+        _step('2', 'Scores', false),
+        _stepLine(false),
+        _step('3', 'Review', false),
       ],
     );
   }
-}
 
-Widget _bottomButton(BuildContext context, String text, Widget destination) {
-  return SizedBox(
-    width: double.infinity,
-    height: 55,
-    child: ElevatedButton(
-      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => destination)),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFFFFCC80),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  Widget _step(String number, String label, bool active) {
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor:
+          active ? const Color(0xFFE9C2D7) : Colors.white12,
+          child: Text(
+            number,
+            style: TextStyle(
+              color: active ? const Color(0xFF512D38) : Colors.white38,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: active ? const Color(0xFFE9C2D7) : Colors.white30,
+            fontSize: 11,
+            fontFamily: 'Pridi',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stepLine(bool active) {
+    return Expanded(
+      child: Container(
+        height: 2,
+        margin: const EdgeInsets.only(bottom: 18),
+        color: active
+            ? const Color(0xFFE9C2D7).withOpacity(0.5)
+            : Colors.white12,
       ),
-      child: Text(text, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-    ),
-  );
+    );
+  }
+
+  // ── HELPERS ──────────────────────────────────────────────────────────────────
+
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Colors.white70,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: validator,
+      onChanged: (_) => setState(() {}), // Refresh summary preview
+      style: const TextStyle(color: Colors.white, fontFamily: 'Pridi'),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+        filled: true,
+        fillColor: const Color(0xFF4A3439),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        prefixIcon: Icon(icon, color: const Color(0xFFE9C2D7), size: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+              color: Color(0xFFE9C2D7), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:
+          const BorderSide(color: Colors.redAccent, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:
+          const BorderSide(color: Colors.redAccent, width: 1.5),
+        ),
+        errorStyle: const TextStyle(color: Colors.redAccent, fontSize: 11),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String? value,
+    required String hint,
+    required IconData icon,
+    required List<String> items,
+    required void Function(String?) onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4A3439),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: value != null
+              ? const Color(0xFFE9C2D7).withOpacity(0.6)
+              : Colors.transparent,
+          width: 1.5,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          dropdownColor: const Color(0xFF4A3439),
+          icon: const Icon(Icons.keyboard_arrow_down,
+              color: Color(0xFFE9C2D7)),
+          hint: Row(
+            children: [
+              Icon(icon, color: const Color(0xFFE9C2D7), size: 18),
+              const SizedBox(width: 12),
+              Text(hint,
+                  style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 14,
+                      fontFamily: 'Pridi')),
+            ],
+          ),
+          items: items
+              .map((item) => DropdownMenuItem(
+            value: item,
+            child: Row(
+              children: [
+                Icon(icon, color: const Color(0xFFE9C2D7), size: 16),
+                const SizedBox(width: 12),
+                Text(item,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Pridi',
+                        fontSize: 14)),
+              ],
+            ),
+          ))
+              .toList(),
+          onChanged: (val) {
+            onChanged(val);
+            setState(() {});
+          },
+          selectedItemBuilder: (context) => items
+              .map((item) => Row(
+            children: [
+              Icon(icon, color: const Color(0xFFE9C2D7), size: 18),
+              const SizedBox(width: 12),
+              Text(item,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Pridi',
+                      fontSize: 14)),
+            ],
+          ))
+              .toList(),
+        ),
+      ),
+    );
+  }
 }

@@ -1,6 +1,8 @@
+
 import 'package:flutter/material.dart';
-// Ensure this import matches your TeacherDashboard filename
 import 'package:forc/pages/TeacherDashboard.dart';
+import 'package:forc/pages/AdminDashboard.dart';
+import 'package:forc/pages/StudentDashboard.dart';
 
 class AccountSelectionPage extends StatelessWidget {
   const AccountSelectionPage({super.key});
@@ -27,18 +29,18 @@ class AccountSelectionPage extends StatelessWidget {
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
-                children: [ // Removed 'const' here because children now use 'context'
+                children: [
                   const SizedBox(height: 60),
 
-                  const _AdminSection(),
+                  _AdminSection(),
 
                   const SizedBox(height: 18),
 
-                  const _TeacherSection(),
+                  _TeacherSection(),
 
                   const SizedBox(height: 8),
 
-                  const _StudentSection(),
+                  _StudentSection(),
                 ],
               ),
             ),
@@ -63,7 +65,7 @@ class _AdminSection extends StatelessWidget {
           height: 190,
         ),
         const SizedBox(height: 6),
-        roleButton(context, 'Admin'), // Added context
+        roleButton(context, 'Admin'),
       ],
     );
   }
@@ -83,7 +85,7 @@ class _TeacherSection extends StatelessWidget {
           height: 190,
         ),
         const SizedBox(height: 6),
-        roleButton(context, 'Teacher'), // Added context
+        roleButton(context, 'Teacher'),
       ],
     );
   }
@@ -103,7 +105,7 @@ class _StudentSection extends StatelessWidget {
           height: 170,
         ),
         const SizedBox(height: 6),
-        roleButton(context, 'Student'), // Added context
+        roleButton(context, 'Student'),
       ],
     );
   }
@@ -117,11 +119,20 @@ Widget roleButton(BuildContext context, String title) {
     height: 42,
     child: ElevatedButton(
       onPressed: () {
-        if (title == 'Teacher') {
-          // Navigation logic for 4See Teacher Dashboard
+        if (title == 'Admin') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminDashboard()),
+          );
+        } else if (title == 'Teacher') {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const TeacherDashboard()),
+          );
+        } else if (title == 'Student') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const StudentDashboard()),
           );
         }
       },
