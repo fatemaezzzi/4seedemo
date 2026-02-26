@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'bottom_nav_bar.dart';
-import 'quiz_data.dart';
+import '../widgets/bottom_nav_bar.dart';
+import '../quiz_data.dart';
 import 'quiz_result_page.dart';
 
 class StudentQuizStart extends StatefulWidget {
@@ -118,7 +118,7 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
                 Text(
                   '${_currentIndex + 1} / $_total',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.55),
+                    color: Colors.white.withValues(alpha: 0.55),
                     fontSize: 12,
                   ),
                 ),

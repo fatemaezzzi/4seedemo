@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'bottom_nav_bar.dart';
+import '../widgets/bottom_nav_bar.dart';
 import 'student_quiz_start.dart';
-import 'quiz_data.dart';
+import '../quiz_data.dart';
 
 class StudentQuizPage extends StatefulWidget {
   const StudentQuizPage({super.key});
@@ -189,7 +189,7 @@ class _CategoryCircle extends StatelessWidget {
               '(${category.subtitle})',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.80),
+                color: Colors.white.withValues(alpha: 0.80),
                 fontSize: 11,
               ),
             ),

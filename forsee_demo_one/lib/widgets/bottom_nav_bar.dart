@@ -79,7 +79,7 @@ class _NavItem extends StatelessWidget {
         child: Center(
           child: Icon(
             icon,
-            color: isActive ? const Color(0xFF3D1A24) : const Color(0xFF3D1A24).withOpacity(0.55),
+            color: isActive ? const Color(0xFF3D1A24) : const Color(0xFF3D1A24).withValues(alpha: 0.55),
             size: isActive ? 28 : 24,
           ),
         ),

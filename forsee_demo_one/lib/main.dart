@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/auth_wrapper.dart';
-import 'package:forsee_demo_one/student_quiz_page.dart';
-import 'package:forsee_demo_one/welcome_page_first.dart';
-import 'input_test_page.dart';
+import 'package:forsee_demo_one/pages/settings/admin_settings_page.dart';
+import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
+import 'package:forsee_demo_one/pages/settings/teacher_settings_page.dart';
+import 'package:forsee_demo_one/pages/student_quiz_page.dart';
+import 'package:forsee_demo_one/pages/welcome_page_first.dart';
+import 'package:forsee_demo_one/theme/app_theme.dart';
+import 'pages/input_test_page.dart';
 import 'scan_attendance.dart'; // Import your new file
 // import 'welcome_page_first.dart';
-import 'simple_api_test.dart';
-import 'welcome_page_seond.dart';
-import 'sign_up_page.dart';
-import 'login_page.dart';
+import 'pages/simple_api_test.dart';
+import 'pages/welcome_page_seond.dart';
+import 'pages/sign_up_page.dart';
+import 'pages/login_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -18,6 +22,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   runApp(MaterialApp(
+    theme: AppTheme.theme,
     debugShowCheckedModeBanner: false,
     home: const AuthWrapper(),
     routes: {
@@ -135,6 +140,43 @@ class HomeScreen extends StatelessWidget {
           },
           child: const Text("welcome2"),
         ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminSettingsPage(),
+              ),
+            );
+          },
+          child: const Text("adminSettingsPage"),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const TeacherSettingsPage(),
+              ),
+            );
+          },
+          child: const Text("teacherSettingsPage"),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const StudentSettingsPage(),
+              ),
+            );
+          },
+          child: const Text("studentSettingsPage"),
+        ),
+        const SizedBox(height: 16)
       ],
     ),
     ),

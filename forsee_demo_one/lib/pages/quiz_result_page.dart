@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'bottom_nav_bar.dart';
-import 'quiz_data.dart';
+import '../widgets/bottom_nav_bar.dart';
+import '../quiz_data.dart';
 
 class QuizResultPage extends StatelessWidget {
   final QuizCategory category;
@@ -102,7 +102,7 @@ class QuizResultPage extends StatelessWidget {
                         Text(
                           category.title.replaceAll('\n', ' '),
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 18,
                           ),
                         ),
@@ -144,7 +144,7 @@ class QuizResultPage extends StatelessWidget {
                         Text(
                           'Score: $_totalScore',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.60),
+                            color: Colors.white.withValues(alpha: 0.60),
                             fontSize: 14,
                           ),
                         ),
@@ -176,7 +176,7 @@ class QuizResultPage extends StatelessWidget {
                       color: const Color(0xFF4A1F2E),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
                     child: const Text(

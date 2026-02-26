@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'auth_service.dart';
-import 'app_design_widgets.dart';
+import '../auth_service.dart';
+import '../widgets/app_design_widgets.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -270,35 +270,35 @@ class _SignUpPageState extends State<SignUpPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // ── Role chips ──────────────────────────
-                            const Text(
-                              'I am a...',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                letterSpacing: 1,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: UserRole.values
-                                  .map((role) => Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 3),
-                                  child: RoleChip(
-                                    role: role,
-                                    selected:
-                                    _selectedRole == role,
-                                    onTap: () => setState(() =>
-                                    _selectedRole = role),
-                                  ),
-                                ),
-                              ))
-                                  .toList(),
-                            ),
-
-                            const SizedBox(height: 20),
+                            // const Text(
+                            //   'I am a...',
+                            //   style: TextStyle(
+                            //     color: Colors.white70,
+                            //     fontSize: 13,
+                            //     letterSpacing: 1,
+                            //     fontWeight: FontWeight.w500,
+                            //   ),
+                            // ),
+                            // const SizedBox(height: 10),
+                            // Row(
+                            //   children: UserRole.values
+                            //       .map((role) => Expanded(
+                            //     child: Padding(
+                            //       padding: const EdgeInsets.symmetric(
+                            //           horizontal: 3),
+                            //       child: RoleChip(
+                            //         role: role,
+                            //         selected:
+                            //         _selectedRole == role,
+                            //         onTap: () => setState(() =>
+                            //         _selectedRole = role),
+                            //       ),
+                            //     ),
+                            //   ))
+                            //       .toList(),
+                            // ),
+                            //
+                            const SizedBox(height: 35),
 
                             // ── Form fields ─────────────────────────
                             Form(

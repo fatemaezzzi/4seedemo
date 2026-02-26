@@ -360,7 +360,7 @@ class _InputTestPageState extends State<InputTestPage> {
       width: double.infinity,
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: riskColor.withOpacity(0.1),
+        color: riskColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: riskColor, width: 2),
       ),
