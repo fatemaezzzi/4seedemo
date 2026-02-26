@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "847991271956",
+    "project_id": "fir-tut-415ac",
+    "storage_bucket": "fir-tut-415ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:847991271956:android:1a591852bb88bb2aa4ed01",
+        "android_client_info": {
+          "package_name": "com.example.forc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXx5AvA3BlQAxS1W8z3k3oWxGZwNExsCk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
