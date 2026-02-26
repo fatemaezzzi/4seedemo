@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/pages/profile/profile_subpages/student/mental_health_quiz.dart';
 import '../../theme/app_theme.dart';
-
+import 'profile_subpages/student/teacher_remarks_page.dart';
+import 'profile_subpages/student/contact_teacher_page.dart';
+import 'profile_subpages/shared/edit_personal_info_page.dart';
+import 'profile_subpages/shared/logout_dialog.dart';
 
 class StudentProfilePage extends StatelessWidget {
   const StudentProfilePage({super.key});
@@ -45,7 +49,8 @@ class StudentProfilePage extends StatelessWidget {
             // Mental Health Quiz Button
             _ActionButton(
               label: 'Mental Health Quiz',
-              onTap: () {},
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const MentalHealthQuizPage())),
             ),
             const SizedBox(height: 16),
 
@@ -68,14 +73,31 @@ class StudentProfilePage extends StatelessWidget {
             // Teacher Remarks Button
             _ActionButton(
               label: 'Teacher Remarks',
-              onTap: () {},
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const TeacherRemarksPage())),
             ),
             const SizedBox(height: 12),
 
             // Contact Teacher Button
             _ActionButton(
               label: 'Contact Teacher',
-              onTap: () {},
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ContactTeacherPage())),
+            ),
+            const SizedBox(height: 16),
+
+            // Edit Personal Info Button
+            _ActionButton(
+              label: 'Edit Personal Information',
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const EditPersonalInfoPage(role: UserRole.student))),
+            ),
+            const SizedBox(height: 12),
+
+            // Logout Button
+            _OutlineButton(
+              label: 'Logout',
+              onTap: () => showLogoutDialog(context),
             ),
             const SizedBox(height: 24),
           ],
@@ -104,6 +126,33 @@ class _ActionButton extends StatelessWidget {
           backgroundColor: AppColors.accent,
           foregroundColor: AppColors.textDark,
           elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+class _OutlineButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _OutlineButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.accent,
+          side: const BorderSide(color: AppColors.accent),
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         ),

@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-
+import 'profile_subpages/admin/admin_student_profile_page.dart';
+import 'profile_subpages/admin/admin_teacher_profile_page.dart';
+import 'profile_subpages/admin/admin_report_account_page.dart';
+import 'profile_subpages/teacher/check_report_page.dart';
+import 'profile_subpages/shared/calendar_page.dart';
+import 'profile_subpages/shared/edit_personal_info_page.dart';
+import 'profile_subpages/shared/logout_dialog.dart';
 
 class AdminProfilePage extends StatelessWidget {
   const AdminProfilePage({super.key});
@@ -43,7 +49,8 @@ class AdminProfilePage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // Profile Button
-            _ActionButton(label: 'Profile', onTap: () {}),
+            _ActionButton(label: 'Profile', onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const EditPersonalInfoPage(role: UserRole.admin)))),
             const SizedBox(height: 16),
 
             // Stats Grid
@@ -59,22 +66,30 @@ class AdminProfilePage extends StatelessWidget {
 
             // Quick Actions Card
             _QuickActionsCard(
-              actions: const [
-                'Student Profile',
-                'Teacher Profile',
-                'Report',
-                'Account',
-                'Calendar',
+              actions: [
+                _QuickAction('Student Profile', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AdminStudentProfilePage()))),
+                _QuickAction('Teacher Profile', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AdminTeacherProfilePage()))),
+                _QuickAction('Report', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AdminReportPage()))),
+                _QuickAction('Account', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AdminAccountPage()))),
+                _QuickAction('Calendar', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CalendarPage()))),
+                _QuickAction('Check Reports', () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CheckReportPage()))),
               ],
             ),
             const SizedBox(height: 16),
 
             // Edit Personal Info
-            _ActionButton(label: 'Edit Personal Information', onTap: () {}),
+            _ActionButton(label: 'Edit Personal Information', onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const EditPersonalInfoPage(role: UserRole.admin)))),
             const SizedBox(height: 12),
 
             // Logout
-            _OutlineButton(label: 'Logout', onTap: () {}),
+            _OutlineButton(label: 'Logout', onTap: () => showLogoutDialog(context)),
             const SizedBox(height: 24),
           ],
         ),
@@ -206,8 +221,16 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+// ─── Quick Action Model ──────────────────────────────────────
+
+class _QuickAction {
+  final String label;
+  final VoidCallback onTap;
+  const _QuickAction(this.label, this.onTap);
+}
+
 class _QuickActionsCard extends StatelessWidget {
-  final List<String> actions;
+  final List<_QuickAction> actions;
   const _QuickActionsCard({required this.actions});
 
   @override
@@ -231,13 +254,13 @@ class _QuickActionsCard extends StatelessWidget {
             return Column(
               children: [
                 InkWell(
-                  onTap: () {},
+                  onTap: action.onTap,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(action,
+                        Text(action.label,
                             style: const TextStyle(
                                 color: AppColors.textDark, fontSize: 13, fontWeight: FontWeight.w500)),
                         const Icon(Icons.chevron_right, color: Colors.black38, size: 18),
