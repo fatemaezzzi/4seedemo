@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 // ─────────────────────────────────────────────
 // ENUMS & MODELS
@@ -12,8 +13,9 @@ class AppUser {
   final String email;
   final String name;
   final UserRole role;
-  final String? classroomId; // for students
-  final String? schoolId;    // for teachers & admins
+  final String? classroomId;
+  final String? schoolId;
+  final String? photoUrl;
 
   const AppUser({
     required this.uid,
@@ -22,6 +24,7 @@ class AppUser {
     required this.role,
     this.classroomId,
     this.schoolId,
+    this.photoUrl,
   });
 
   factory AppUser.fromMap(Map<String, dynamic> map, String uid) {
@@ -35,6 +38,7 @@ class AppUser {
       ),
       classroomId: map['classroomId'],
       schoolId: map['schoolId'],
+      photoUrl: map['photoUrl'],
     );
   }
 
@@ -44,8 +48,25 @@ class AppUser {
     'role': role.name,
     if (classroomId != null) 'classroomId': classroomId,
     if (schoolId != null) 'schoolId': schoolId,
+    if (photoUrl != null) 'photoUrl': photoUrl,
     'createdAt': FieldValue.serverTimestamp(),
   };
+}
+
+// ─────────────────────────────────────────────
+// SOCIAL AUTH RESULT
+// ─────────────────────────────────────────────
+
+class SocialAuthResult {
+  final AppUser? appUser;   // null = new user, needs role selection
+  final User firebaseUser;
+  final bool isNewUser;
+
+  const SocialAuthResult({
+    required this.appUser,
+    required this.firebaseUser,
+    required this.isNewUser,
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -55,14 +76,12 @@ class AppUser {
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  // ── Stream: listen to auth state changes ──────────────────────────────────
+  // ── Streams & getters ─────────────────────────────────────────────────────
   Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // ── Get current Firebase user ─────────────────────────────────────────────
   User? get currentUser => _auth.currentUser;
 
-  // ── Fetch AppUser profile from Firestore ─────────────────────────────────
   Future<AppUser?> fetchCurrentAppUser() async {
     final user = _auth.currentUser;
     if (user == null) return null;
@@ -72,28 +91,23 @@ class AuthService {
   }
 
   // ─────────────────────────────────────────────
-  // SIGN UP
+  // EMAIL SIGN UP
   // ─────────────────────────────────────────────
 
-  /// Creates a Firebase Auth account + writes a Firestore user document.
-  /// [role] must be passed explicitly so every new account is categorised.
   Future<AppUser> signUp({
     required String email,
     required String password,
     required String name,
     required UserRole role,
-    String? classroomId, // students: join code / classroom ID
-    String? schoolId,    // teachers & admins: school ID
+    String? classroomId,
+    String? schoolId,
   }) async {
-    // 1. Create the Firebase Auth user
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
 
     final uid = credential.user!.uid;
-
-    // 2. Build the AppUser object
     final appUser = AppUser(
       uid: uid,
       email: email.trim(),
@@ -103,25 +117,24 @@ class AuthService {
       schoolId: schoolId,
     );
 
-    // 3. Write to Firestore /users/{uid}
     await _db.collection('users').doc(uid).set(appUser.toMap());
 
-    // 4. For students: register them in the classroom document as well.
-    //    Use set+merge so it works even if the classroom doc doesn't exist yet.
-    if (role == UserRole.student && classroomId != null && classroomId.isNotEmpty) {
-      await _db.collection('classrooms').doc(classroomId).set({
-        'studentIds': FieldValue.arrayUnion([uid]),
-      }, SetOptions(merge: true));
+    if (role == UserRole.student &&
+        classroomId != null &&
+        classroomId.isNotEmpty) {
+      await _db.collection('classrooms').doc(classroomId).set(
+        {'studentIds': FieldValue.arrayUnion([uid])},
+        SetOptions(merge: true),
+      );
     }
 
     return appUser;
   }
 
   // ─────────────────────────────────────────────
-  // LOG IN
+  // EMAIL LOG IN
   // ─────────────────────────────────────────────
 
-  /// Signs in and returns the full AppUser (including role).
   Future<AppUser> logIn({
     required String email,
     required String password,
@@ -135,7 +148,6 @@ class AuthService {
     final doc = await _db.collection('users').doc(uid).get();
 
     if (!doc.exists) {
-      // Auth record exists but no Firestore doc – rare edge case
       await _auth.signOut();
       throw Exception('User profile not found. Please contact support.');
     }
@@ -144,10 +156,88 @@ class AuthService {
   }
 
   // ─────────────────────────────────────────────
+  // GOOGLE SIGN IN
+  // ─────────────────────────────────────────────
+
+  /// Returns null if user cancelled the Google picker.
+  /// Returns SocialAuthResult with isNewUser=true if no Firestore profile yet
+  /// — UI should then call completeSocialSignUp() after role selection.
+  Future<SocialAuthResult?> signInWithGoogle() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) return null; // user cancelled
+
+    final googleAuth = await googleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential = await _auth.signInWithCredential(credential);
+    final firebaseUser = userCredential.user!;
+
+    // Check if Firestore profile already exists
+    final doc = await _db.collection('users').doc(firebaseUser.uid).get();
+
+    if (doc.exists) {
+      return SocialAuthResult(
+        appUser: AppUser.fromMap(doc.data()!, firebaseUser.uid),
+        firebaseUser: firebaseUser,
+        isNewUser: false,
+      );
+    }
+
+    // New Google user — profile not yet created
+    return SocialAuthResult(
+      appUser: null,
+      firebaseUser: firebaseUser,
+      isNewUser: true,
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // COMPLETE SOCIAL SIGN UP
+  // Call after role selection for new Google users
+  // ─────────────────────────────────────────────
+
+  Future<AppUser> completeSocialSignUp({
+    required User firebaseUser,
+    required UserRole role,
+    String? classroomId,
+    String? schoolId,
+  }) async {
+    final appUser = AppUser(
+      uid: firebaseUser.uid,
+      email: firebaseUser.email ?? '',
+      name: firebaseUser.displayName ?? 'User',
+      role: role,
+      classroomId: classroomId,
+      schoolId: schoolId,
+      photoUrl: firebaseUser.photoURL,
+    );
+
+    await _db.collection('users').doc(firebaseUser.uid).set(appUser.toMap());
+
+    if (role == UserRole.student &&
+        classroomId != null &&
+        classroomId.isNotEmpty) {
+      await _db.collection('classrooms').doc(classroomId).set(
+        {'studentIds': FieldValue.arrayUnion([firebaseUser.uid])},
+        SetOptions(merge: true),
+      );
+    }
+
+    return appUser;
+  }
+
+  // ─────────────────────────────────────────────
   // SIGN OUT
   // ─────────────────────────────────────────────
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    await _googleSignIn.signOut();
+    await _auth.signOut();
+  }
 
   // ─────────────────────────────────────────────
   // PASSWORD RESET
@@ -160,8 +250,6 @@ class AuthService {
   // ADMIN HELPERS
   // ─────────────────────────────────────────────
 
-  /// Elevate an existing user to admin – call from a secure Cloud Function
-  /// or directly only if you're already authenticated as an admin.
   Future<void> setUserRole(String uid, UserRole role) async {
     await _db.collection('users').doc(uid).update({'role': role.name});
   }

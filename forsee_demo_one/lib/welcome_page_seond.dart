@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'app_design_widgets.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WELCOME PAGE SECOND
@@ -34,28 +33,18 @@ class _WelcomePageSecondState extends State<WelcomePageSecond>
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF3B1A2E),
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Mint blob top-right
-          Positioned(
-            top: 0, right: 0,
-            child: MintBlob(width: 220, height: 280),
-          ),
-          // Mint blob bottom-left
-          Positioned(
-            bottom: 0, left: 0,
-            child: MintBlob(width: 200, height: 240, flip: true),
-          ),
-          // Leaf accents
-          Positioned(
-            top: 50, left: 16,
-            child: _LeafAccent(color: const Color(0xFF6FAF80), size: 55),
-          ),
-          Positioned(
-            bottom: 110, right: 16,
-            child: _LeafAccent(color: const Color(0xFF6FAF80), size: 45),
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/welcome-page-second.png',
+              fit: BoxFit.cover,
+            ),
           ),
 
           SafeArea(
@@ -63,28 +52,8 @@ class _WelcomePageSecondState extends State<WelcomePageSecond>
               opacity: _anim,
               child: Column(
                 children: [
-                  const Spacer(flex: 2),
-                  const FourSeeLogo(size: 68),
-                  const Spacer(flex: 1),
+                  const Spacer(flex: 3),
 
-                  // Illustration
-                  Container(
-                    width: 220,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      color:
-                      const Color(0xFF4A2040).withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Center(
-                      child:
-                      Text('🧑‍💻', style: TextStyle(fontSize: 80)),
-                    ),
-                  ),
-
-                  const Spacer(flex: 1),
-
-                  // Buttons
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 40),
                     child: Column(
@@ -97,14 +66,15 @@ class _WelcomePageSecondState extends State<WelcomePageSecond>
                         const SizedBox(height: 16),
                         _WelcomeButton(
                           label: 'Create an account',
-                          onTap: () => Navigator.pushNamed(
-                              context, '/account_selection'),
+                          filled: true,
+                          onTap: () =>
+                              Navigator.pushNamed(context, '/account_selection'),
                         ),
                       ],
                     ),
                   ),
 
-                  const Spacer(flex: 2),
+                  SizedBox(height: screenHeight * 0.06),
                 ],
               ),
             ),
@@ -124,68 +94,70 @@ class AccountSelectionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF3B1A2E),
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          Positioned(
-            top: 0, right: 0,
-            child: MintBlob(width: 200, height: 240),
-          ),
-          Positioned(
-            bottom: 0, left: 0,
-            child: MintBlob(width: 180, height: 200, flip: true),
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/account-selection-page.png',
+              fit: BoxFit.cover,
+            ),
           ),
 
           SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 24),
-                const FourSeeLogo(size: 48),
-                const SizedBox(height: 8),
-                const Text(
-                  'Choose your role',
-                  style: TextStyle(color: Colors.white38, fontSize: 13),
+                // Back button
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios,
+                        color: Colors.white70, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
-                const SizedBox(height: 32),
 
+                SizedBox(height: screenHeight * 0.02),
+
+                // Scrollable role cards
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 36),
                     children: [
                       _RoleCard(
                         role: 'Admin',
-                        emoji: '👩‍💼',
-                        subtitle: 'Manage school & staff',
+                        clipartPath: 'assets/admin.png',
                         onTap: () => Navigator.pushNamed(
                           context, '/sign_up',
                           arguments: 'admin',
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 28),
                       _RoleCard(
                         role: 'Teacher',
-                        emoji: '👩‍🏫',
-                        subtitle: 'Monitor & support students',
+                        clipartPath: 'assets/teacher.png',
                         onTap: () => Navigator.pushNamed(
                           context, '/sign_up',
                           arguments: 'teacher',
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 28),
                       _RoleCard(
                         role: 'Student',
-                        emoji: '🧑‍🎓',
-                        subtitle: 'Track your progress',
+                        clipartPath: 'assets/student.png',
                         onTap: () => Navigator.pushNamed(
                           context, '/sign_up',
                           arguments: 'student',
                         ),
                       ),
+                      SizedBox(height: screenHeight * 0.04),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -196,51 +168,18 @@ class AccountSelectionPage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCAL WIDGETS (only used in this file)
+// LOCAL WIDGETS
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _WelcomeButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-  const _WelcomeButton({required this.label, required this.onTap});
+  final bool filled;
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2A0F20).withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: Colors.white24),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleCard extends StatelessWidget {
-  final String role;
-  final String emoji;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _RoleCard({
-    required this.role,
-    required this.emoji,
-    required this.subtitle,
+  const _WelcomeButton({
+    required this.label,
     required this.onTap,
+    this.filled = false,
   });
 
   @override
@@ -248,75 +187,93 @@ class _RoleCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-        const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
-          color: const Color(0xFF2A0F20).withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white12),
+          color: filled
+              ? const Color(0xFFF4B8C8)
+              : Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: filled ? const Color(0xFFF4B8C8) : Colors.white38,
+          ),
         ),
-        child: Row(
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 44)),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  role,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 12),
-                ),
-              ],
-            ),
-            const Spacer(),
-            const Icon(Icons.arrow_forward_ios,
-                color: Colors.white24, size: 16),
-          ],
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: filled ? const Color(0xFF3B1A2E) : Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
 }
 
-class _LeafAccent extends StatelessWidget {
-  final Color color;
-  final double size;
-  const _LeafAccent({required this.color, required this.size});
+// ── Role card: clipart image on top, pink label button below ──────────────────
+
+class _RoleCard extends StatelessWidget {
+  final String role;
+  final String clipartPath;
+  final VoidCallback onTap;
+
+  const _RoleCard({
+    required this.role,
+    required this.clipartPath,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _LeafPainter(color),
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Clipart image ────────────────────────────────────────────
+          Image.asset(
+            clipartPath,
+            width: screenWidth * 0.60,
+            height: 170,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: screenWidth * 0.60,
+              height: 170,
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.person, color: Colors.white30, size: 64),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Pink pill label ──────────────────────────────────────────
+          Container(
+            width: screenWidth * 0.70,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4B8C8),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Text(
+              role,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF3B1A2E),
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
-
-class _LeafPainter extends CustomPainter {
-  final Color color;
-  _LeafPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final path = Path();
-    final w = size.width;
-    final h = size.height;
-    path.moveTo(w * 0.5, 0);
-    path.quadraticBezierTo(w, h * 0.5, w * 0.5, h);
-    path.quadraticBezierTo(0, h * 0.5, w * 0.5, 0);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

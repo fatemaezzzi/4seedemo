@@ -1,55 +1,7 @@
 import 'package:flutter/material.dart';
 import 'bottom_nav_bar.dart';
 import 'student_quiz_start.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Category data
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Category {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String routeKey; // matches key in _categoryQuestions
-
-  const _Category({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.routeKey,
-  });
-}
-
-const List<_Category> _categories = [
-  _Category(
-    icon: Icons.bolt_rounded,
-    title: 'Focus & Energy',
-    subtitle: 'ADHD Patterns',
-    routeKey: 'Focus And Energy',
-  ),
-  _Category(
-    icon: Icons.sentiment_satisfied_alt_rounded,
-    title: 'Mood & Motivation',
-    subtitle: 'Depression Patterns',
-    routeKey: 'Mood And Motivation',
-  ),
-  _Category(
-    icon: Icons.menu_book_rounded,
-    title: 'Reading & Words',
-    subtitle: 'Dyslexia Patterns',
-    routeKey: 'Reading And Words',
-  ),
-  _Category(
-    icon: Icons.self_improvement_rounded,
-    title: 'Worry & Stress',
-    subtitle: 'ADHD Patterns',
-    routeKey: 'Worry And Stress',
-  ),
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// StudentQuizPage
-// ─────────────────────────────────────────────────────────────────────────────
+import 'quiz_data.dart';
 
 class StudentQuizPage extends StatefulWidget {
   const StudentQuizPage({super.key});
@@ -59,20 +11,18 @@ class StudentQuizPage extends StatefulWidget {
 }
 
 class _StudentQuizPageState extends State<StudentQuizPage> {
-  String? _selectedRouteKey;
+  String? _selectedKey;
 
-  void _selectCategory(String routeKey) {
-    setState(() {
-      _selectedRouteKey = routeKey;
-    });
+  void _selectCategory(String key) {
+    setState(() => _selectedKey = key);
   }
 
   void _goNext() {
-    if (_selectedRouteKey == null) return;
+    if (_selectedKey == null) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => StudentQuizStart(category: _selectedRouteKey!),
+        builder: (_) => StudentQuizStart(categoryKey: _selectedKey!),
       ),
     );
   }
@@ -83,7 +33,7 @@ class _StudentQuizPageState extends State<StudentQuizPage> {
       backgroundColor: const Color(0xFF3D1A24),
       body: Column(
         children: [
-          // ── Top wave header ──────────────────────────────────────────
+          // ── Wave header ──────────────────────────────────────────────
           ClipPath(
             clipper: _WaveClipper(),
             child: Container(
@@ -94,12 +44,12 @@ class _StudentQuizPageState extends State<StudentQuizPage> {
                   width: double.infinity,
                   height: 190,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                     child: const Text(
                       'My Mind\n& Mood',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 38,
+                        fontSize: 40,
                         fontWeight: FontWeight.bold,
                         height: 1.2,
                       ),
@@ -110,7 +60,7 @@ class _StudentQuizPageState extends State<StudentQuizPage> {
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
 
           // ── Description card ─────────────────────────────────────────
           Padding(
@@ -126,61 +76,57 @@ class _StudentQuizPageState extends State<StudentQuizPage> {
                 'There are no right or wrong answers. This is just a tool to help you understand your own brain better. Read each statement and decide if it sounds like you.',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 14.5,
                   height: 1.55,
                 ),
               ),
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
-          // ── Category circles 2×2 grid ────────────────────────────────
+          // ── 2×2 Category circles ─────────────────────────────────────
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GridView.count(
                 crossAxisCount: 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
                 physics: const NeverScrollableScrollPhysics(),
-                children: _categories.map((cat) {
-                  final bool isSelected = _selectedRouteKey == cat.routeKey;
+                children: quizCategories.map((cat) {
+                  final bool isSelected = _selectedKey == cat.key;
                   return _CategoryCircle(
-                    icon: cat.icon,
-                    title: cat.title,
-                    subtitle: cat.subtitle,
+                    category: cat,
                     isSelected: isSelected,
-                    onTap: () => _selectCategory(cat.routeKey),
+                    onTap: () => _selectCategory(cat.key),
                   );
                 }).toList(),
               ),
             ),
           ),
 
-          // ── Next arrow button ─────────────────────────────────────────
+          // ── Next button ───────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Align(
               alignment: Alignment.centerRight,
               child: GestureDetector(
-                onTap: _selectedRouteKey != null ? _goNext : null,
+                onTap: _selectedKey != null ? _goNext : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: _selectedRouteKey != null
+                    color: _selectedKey != null
                         ? const Color(0xFFCC7090)
                         : const Color(0xFF6B3248),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.arrow_forward_rounded,
-                    color: _selectedRouteKey != null
-                        ? Colors.white
-                        : Colors.white38,
-                    size: 24,
+                    color: _selectedKey != null ? Colors.white : Colors.white30,
+                    size: 26,
                   ),
                 ),
               ),
@@ -196,20 +142,16 @@ class _StudentQuizPageState extends State<StudentQuizPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Category Circle — circle shape with selection highlight
+// Category Circle
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CategoryCircle extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final QuizCategory category;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _CategoryCircle({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.category,
     required this.isSelected,
     required this.onTap,
   });
@@ -230,10 +172,10 @@ class _CategoryCircle extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.white, size: 32),
-            const SizedBox(height: 8),
+            Icon(category.icon, color: Colors.white, size: 34),
+            const SizedBox(height: 10),
             Text(
-              title,
+              category.title,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
@@ -242,9 +184,9 @@ class _CategoryCircle extends StatelessWidget {
                 height: 1.25,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Text(
-              '($subtitle)',
+              '(${category.subtitle})',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.80),
@@ -259,7 +201,7 @@ class _CategoryCircle extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Wave Clipper  (identical to student_quiz_start.dart)
+// Wave Clipper
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _WaveClipper extends CustomClipper<Path> {
@@ -268,10 +210,8 @@ class _WaveClipper extends CustomClipper<Path> {
     final path = Path();
     path.lineTo(0, size.height - 48);
     path.quadraticBezierTo(
-      size.width * 0.5,
-      size.height + 24,
-      size.width,
-      size.height - 48,
+      size.width * 0.5, size.height + 24,
+      size.width, size.height - 48,
     );
     path.lineTo(size.width, 0);
     path.close();
@@ -279,5 +219,5 @@ class _WaveClipper extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(_WaveClipper oldClipper) => false;
+  bool shouldReclip(_WaveClipper old) => false;
 }

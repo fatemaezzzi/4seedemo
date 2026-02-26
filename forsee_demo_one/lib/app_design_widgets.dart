@@ -185,30 +185,27 @@ class OrDivider extends StatelessWidget {
 // ── Social login buttons ───────────────────────────────────────────────────────
 
 class SocialButtons extends StatelessWidget {
-  const SocialButtons({super.key});
+  final VoidCallback? onGoogleTap;
+
+  const SocialButtons({
+    super.key,
+    this.onGoogleTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        SocialCircle(
-          onTap: () {},
-          child: const Text(
-            'G',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-            ),
+    return Center(
+      child: SocialCircle(
+        onTap: onGoogleTap ?? () {},
+        child: const Text(
+          'G',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
           ),
         ),
-        const SizedBox(width: 24),
-        SocialCircle(
-          onTap: () {},
-          child: const Icon(Icons.apple, color: Colors.white, size: 28),
-        ),
-      ],
+      ),
     );
   }
 }

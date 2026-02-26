@@ -1,108 +1,63 @@
 import 'package:flutter/material.dart';
 import 'bottom_nav_bar.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sample questions per category
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Map<String, List<String>> _categoryQuestions = {
-  'Focus And Energy': [
-    'When I have to do a boring or difficult assignment, I find it really hard to just get started.',
-    'I often lose track of time when I am working on something.',
-    'I struggle to sit still for long periods of time.',
-    'I frequently forget where I put things like my bag or pencil.',
-    'I find it hard to focus when there are distractions around me.',
-  ],
-  'Mood And Motivation': [
-    'I often feel sad or empty for no clear reason.',
-    'I have lost interest in things I used to enjoy.',
-    'I feel tired most of the time even when I sleep enough.',
-    'I find it hard to feel happy even on good days.',
-    'I sometimes feel like nothing I do matters.',
-  ],
-  'Reading And Words': [
-    'I mix up letters or words when I am reading.',
-    'Reading out loud feels much harder for me than for others.',
-    'I sometimes skip words or lines when reading.',
-    'I find it hard to spell common words correctly.',
-    'I often have to re-read sentences to understand them.',
-  ],
-  'Worry And Stress': [
-    'I worry a lot about things that might go wrong.',
-    'My mind races with thoughts before I fall asleep.',
-    'I feel nervous or tense in everyday situations.',
-    'Small problems feel much bigger to me than they should.',
-    'I often feel overwhelmed when I have a lot to do.',
-  ],
-};
-
-const List<String> _options = ['Never', 'Sometimes', 'Often', 'Very Often'];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// StudentQuizStart Page
-// ─────────────────────────────────────────────────────────────────────────────
+import 'quiz_data.dart';
+import 'quiz_result_page.dart';
 
 class StudentQuizStart extends StatefulWidget {
-  final String category;
+  final String categoryKey;
 
-  const StudentQuizStart({super.key, required this.category});
+  const StudentQuizStart({super.key, required this.categoryKey});
 
   @override
   State<StudentQuizStart> createState() => _StudentQuizStartState();
 }
 
 class _StudentQuizStartState extends State<StudentQuizStart> {
-  int _currentQuestion = 0;
-  String? _selectedOption;
+  late final QuizCategory _category;
+  late final List<String> _options;
 
-  List<String> get _questions =>
-      _categoryQuestions[widget.category] ?? _categoryQuestions['Focus And Energy']!;
+  int _currentIndex = 0;
+  int? _selectedScore;                       // score index of tapped option
+  final List<QuizResponse> _responses = [];  // collected answers
 
-  int get _totalQuestions => _questions.length;
+  @override
+  void initState() {
+    super.initState();
+    _category = quizCategories.firstWhere((c) => c.key == widget.categoryKey);
+    _options  = getOptionsForCategory(widget.categoryKey);
+  }
 
-  double get _progress => (_currentQuestion + 1) / _totalQuestions;
+  int get _total => _category.questions.length;
+  double get _progress => (_currentIndex + 1) / _total;
+  QuizQuestion get _current => _category.questions[_currentIndex];
 
-  void _selectOption(String option) {
-    setState(() {
-      _selectedOption = option;
-    });
+  void _selectOption(int scoreIndex) {
+    setState(() => _selectedScore = scoreIndex);
   }
 
   void _goNext() {
-    if (_selectedOption == null) return;
+    if (_selectedScore == null) return;
 
-    if (_currentQuestion < _totalQuestions - 1) {
+    // Record this answer
+    _responses.add(QuizResponse(
+      questionId: _current.id,
+      score: _selectedScore!,
+    ));
+
+    if (_currentIndex < _total - 1) {
       setState(() {
-        _currentQuestion++;
-        _selectedOption = null;
+        _currentIndex++;
+        _selectedScore = null;
       });
     } else {
-      // Quiz finished — show completion or pop
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF6B3248),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            'Quiz Complete!',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      // All questions answered — go to results
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QuizResultPage(
+            category: _category,
+            responses: _responses,
           ),
-          content: const Text(
-            'Thank you for completing this section. Your responses have been recorded.',
-            style: TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // close dialog
-                Navigator.pop(context); // go back to quiz page
-              },
-              child: const Text(
-                'Done',
-                style: TextStyle(color: Color(0xFF7DC4B8), fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
         ),
       );
     }
@@ -114,7 +69,7 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
       backgroundColor: const Color(0xFF3D1A24),
       body: Column(
         children: [
-          // ── Top wave header ──────────────────────────────────────────
+          // ── Wave header ──────────────────────────────────────────────
           ClipPath(
             clipper: _WaveClipper(),
             child: Container(
@@ -125,12 +80,12 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
                   width: double.infinity,
                   height: 190,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                     child: Text(
-                      widget.category,
+                      _category.title.replaceAll('\n', ' '),
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 34,
+                        fontSize: 36,
                         fontWeight: FontWeight.bold,
                         height: 1.2,
                       ),
@@ -141,13 +96,13 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
           // ── Progress bar ─────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -155,86 +110,105 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
                     value: _progress,
                     minHeight: 10,
                     backgroundColor: const Color(0xFF6B3248),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7DC4B8)),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        Color(0xFF7DC4B8)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${_currentIndex + 1} / $_total',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.55),
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
 
           // ── Question card ────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: const Color(0xFF6B3248),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 280),
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.04),
+                      end: Offset.zero,
+                    ).animate(anim),
+                    child: child,
+                  ),
+                ),
                 child: Text(
-                  _questions[_currentQuestion],
-                  key: ValueKey(_currentQuestion),
+                  _current.text,
+                  key: ValueKey(_currentIndex),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    height: 1.5,
+                    height: 1.55,
                   ),
                 ),
               ),
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
           // ── Answer options ───────────────────────────────────────────
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: _options.map((option) {
-                  final bool isSelected = _selectedOption == option;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _OptionButton(
-                      label: option,
-                      isSelected: isSelected,
-                      onTap: () => _selectOption(option),
-                    ),
+              child: ListView.separated(
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _options.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 11),
+                itemBuilder: (_, i) {
+                  final bool isSelected = _selectedScore == i;
+                  return _OptionButton(
+                    label: _options[i],
+                    isSelected: isSelected,
+                    onTap: () => _selectOption(i),
                   );
-                }).toList(),
+                },
               ),
             ),
           ),
 
-          // ── Next arrow button ────────────────────────────────────────
+          // ── Next arrow ────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             child: Align(
               alignment: Alignment.centerRight,
               child: GestureDetector(
-                onTap: _selectedOption != null ? _goNext : null,
+                onTap: _selectedScore != null ? _goNext : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: _selectedOption != null
+                    color: _selectedScore != null
                         ? const Color(0xFFCC7090)
                         : const Color(0xFF6B3248),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.arrow_forward_rounded,
-                    color: _selectedOption != null
+                    color: _selectedScore != null
                         ? Colors.white
-                        : Colors.white38,
-                    size: 24,
+                        : Colors.white30,
+                    size: 26,
                   ),
                 ),
               ),
@@ -271,7 +245,7 @@ class _OptionButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF7DC4B8) : const Color(0xFFE8B4C0),
           borderRadius: BorderRadius.circular(40),
@@ -279,10 +253,11 @@ class _OptionButton extends StatelessWidget {
         child: Center(
           child: Text(
             label,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: isSelected ? Colors.white : const Color(0xFF3D1A24),
               fontWeight: FontWeight.w600,
-              fontSize: 16,
+              fontSize: 15,
             ),
           ),
         ),
@@ -301,10 +276,8 @@ class _WaveClipper extends CustomClipper<Path> {
     final path = Path();
     path.lineTo(0, size.height - 48);
     path.quadraticBezierTo(
-      size.width * 0.5,
-      size.height + 24,
-      size.width,
-      size.height - 48,
+      size.width * 0.5, size.height + 24,
+      size.width, size.height - 48,
     );
     path.lineTo(size.width, 0);
     path.close();
@@ -312,5 +285,5 @@ class _WaveClipper extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(_WaveClipper oldClipper) => false;
+  bool shouldReclip(_WaveClipper old) => false;
 }
