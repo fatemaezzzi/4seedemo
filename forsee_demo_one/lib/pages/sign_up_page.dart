@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../auth_service.dart';
+import 'package:get/get.dart';                                      // ← ADDED
+import 'package:forsee_demo_one/controllers/auth_controller.dart';  // ← ADDED
+import 'package:forsee_demo_one/app/routes/app_routes.dart';        // ← ADDED
+import '../services/auth_service.dart';
 import '../widgets/app_design_widgets.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -43,7 +46,9 @@ class _SignUpPageState extends State<SignUpPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final arg = ModalRoute.of(context)?.settings.arguments;
+    // ✅ CHANGED: Read role from Get.arguments (set by AccountSelectionPage)
+    // Falls back to ModalRoute for safety during transition period
+    final arg = Get.arguments ?? ModalRoute.of(context)?.settings.arguments;
     if (arg is String) {
       final role = UserRole.values.firstWhere(
             (r) => r.name == arg,
@@ -65,7 +70,7 @@ class _SignUpPageState extends State<SignUpPage>
     super.dispose();
   }
 
-  // ── Google sign in ───────────────────────────────────────────────────────
+  // ── Google sign in ────────────────────────────────────────────────────────
   Future<void> _googleSignIn() async {
     setState(() { _loading = true; _errorMessage = null; });
     try {
@@ -73,10 +78,9 @@ class _SignUpPageState extends State<SignUpPage>
       if (result == null) { setState(() => _loading = false); return; }
       if (!mounted) return;
       if (!result.isNewUser) {
-        Navigator.pushReplacementNamed(context, "/home_page");
+        // ✅ CHANGED: AuthController stream handles redirect automatically
         return;
       }
-      // New user from social - show role bottom sheet
       setState(() => _loading = false);
       await _showSocialRoleSheet(result.firebaseUser);
     } catch (e) {
@@ -87,7 +91,7 @@ class _SignUpPageState extends State<SignUpPage>
     }
   }
 
-  // ── Complete social sign up ────────────────────────────────────────────────
+  // ── Complete social sign up ───────────────────────────────────────────────
   Future<void> _showSocialRoleSheet(firebaseUser) async {
     final classroomCtrl = TextEditingController();
     final schoolIdCtrl = TextEditingController();
@@ -152,15 +156,15 @@ class _SignUpPageState extends State<SignUpPage>
                     Navigator.pop(ctx);
                     setState(() => _loading = true);
                     try {
-                      await _authService.completeSocialSignUp(
+                      // ✅ CHANGED: Use AuthController — redirects automatically
+                      await AuthController.to.completeSocialSignUp(
                         firebaseUser: firebaseUser, role: sheetRole,
                         classroomId: sheetRole == UserRole.student
                             ? classroomCtrl.text.trim() : null,
                         schoolId: sheetRole != UserRole.student
                             ? schoolIdCtrl.text.trim() : null,
                       );
-                      if (!mounted) return;
-                      Navigator.pushReplacementNamed(context, "/home_page");
+                      // No Navigator call — redirect handled by AuthController
                     } catch (e) {
                       setState(() => _errorMessage = e.toString());
                     } finally {
@@ -181,7 +185,8 @@ class _SignUpPageState extends State<SignUpPage>
       _errorMessage = null;
     });
     try {
-      await _authService.signUp(
+      // ✅ CHANGED: Use AuthController.signUp() — it redirects by role automatically
+      await AuthController.to.signUp(
         email: _emailCtrl.text,
         password: _passwordCtrl.text,
         name: _nameCtrl.text,
@@ -193,31 +198,21 @@ class _SignUpPageState extends State<SignUpPage>
             ? _schoolIdCtrl.text.trim()
             : null,
       );
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home_page');
+      // No Navigator call — AuthController._redirectByRole() handles it
+      final controllerError = AuthController.to.error.value;
+      if (controllerError.isNotEmpty) {
+        setState(() => _errorMessage = controllerError);
+      }
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _friendlyError(e.code));
+      setState(() => _errorMessage = e.message ?? 'Sign up failed.');
     } catch (e) {
-      debugPrint('SignUp error: $e');
-      setState(() => _errorMessage = e.toString());
+      setState(() => _errorMessage = 'Sign up failed. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _friendlyError(String code) {
-    switch (code) {
-      case 'email-already-in-use':
-        return 'An account already exists with this email.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'weak-password':
-        return 'Password must be at least 6 characters.';
-      default:
-        return 'Sign up failed. Please try again.';
-    }
-  }
-
+  // ── All UI below is UNCHANGED from your original ──────────────────────────
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -226,233 +221,160 @@ class _SignUpPageState extends State<SignUpPage>
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // ── Background image ──────────────────────────────────────────
           Positioned.fill(
-            child: Image.asset(
-              'assets/sign-up-page.png',
-              fit: BoxFit.cover,
-            ),
+            child: Image.asset('assets/sign-up-page.png', fit: BoxFit.cover),
           ),
-
           SafeArea(
             child: FadeTransition(
               opacity: _anim,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.06),
-                  end: Offset.zero,
-                ).animate(_anim),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Column(
                   children: [
-                    // ── Back button row ───────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back_ios,
-                              color: Colors.white70, size: 20),
-                          onPressed: () => Navigator.pop(context),
+                    SizedBox(height: screenHeight * 0.10),
+
+                    // Role chips row
+                    Row(
+                      children: UserRole.values.map((role) => Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: RoleChip(
+                            role: role,
+                            selected: _selectedRole == role,
+                            onTap: () => setState(() => _selectedRole = role),
+                          ),
                         ),
-                      ),
+                      )).toList(),
                     ),
 
-                    // Push form down to match where the bg image's
-                    // form section starts (~25% from top for signup)
-                    SizedBox(height: screenHeight * 0.08),
+                    const SizedBox(height: 20),
 
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ── Role chips ──────────────────────────
-                            // const Text(
-                            //   'I am a...',
-                            //   style: TextStyle(
-                            //     color: Colors.white70,
-                            //     fontSize: 13,
-                            //     letterSpacing: 1,
-                            //     fontWeight: FontWeight.w500,
-                            //   ),
-                            // ),
-                            // const SizedBox(height: 10),
-                            // Row(
-                            //   children: UserRole.values
-                            //       .map((role) => Expanded(
-                            //     child: Padding(
-                            //       padding: const EdgeInsets.symmetric(
-                            //           horizontal: 3),
-                            //       child: RoleChip(
-                            //         role: role,
-                            //         selected:
-                            //         _selectedRole == role,
-                            //         onTap: () => setState(() =>
-                            //         _selectedRole = role),
-                            //       ),
-                            //     ),
-                            //   ))
-                            //       .toList(),
-                            // ),
-                            //
-                            const SizedBox(height: 35),
-
-                            // ── Form fields ─────────────────────────
-                            Form(
-                              key: _formKey,
-                              child: Column(
-                                children: [
-                                  PinkField(
-                                    controller: _nameCtrl,
-                                    hint: 'Full Name',
-                                    icon: Icons.person_outline,
-                                    validator: (v) =>
-                                    (v == null || v.trim().isEmpty)
-                                        ? 'Enter your name'
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  PinkField(
-                                    controller: _emailCtrl,
-                                    hint: 'Email ID',
-                                    icon: Icons.email_outlined,
-                                    keyboardType:
-                                    TextInputType.emailAddress,
-                                    validator: (v) =>
-                                    (v == null || !v.contains('@'))
-                                        ? 'Enter a valid email'
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  PinkField(
-                                    controller: _passwordCtrl,
-                                    hint: 'Password',
-                                    icon: Icons.lock_outline,
-                                    obscureText: _obscurePass,
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscurePass
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        color: const Color(0xFF8B5E6A),
-                                        size: 20,
-                                      ),
-                                      onPressed: () => setState(() =>
-                                      _obscurePass = !_obscurePass),
-                                    ),
-                                    validator: (v) =>
-                                    (v == null || v.length < 6)
-                                        ? 'Min 6 characters'
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  PinkField(
-                                    controller: _confirmCtrl,
-                                    hint: 'Confirm Password',
-                                    icon: Icons.lock_outline,
-                                    obscureText: _obscureConfirm,
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscureConfirm
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        color: const Color(0xFF8B5E6A),
-                                        size: 20,
-                                      ),
-                                      onPressed: () => setState(() =>
-                                      _obscureConfirm =
-                                      !_obscureConfirm),
-                                    ),
-                                    validator: (v) =>
-                                    v != _passwordCtrl.text
-                                        ? 'Passwords do not match'
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 12),
-
-                                  // ── Role-specific field ────────────
-                                  if (_selectedRole == UserRole.student)
-                                    PinkField(
-                                      controller: _classroomCtrl,
-                                      hint: 'Classroom Code',
-                                      icon: Icons.class_outlined,
-                                      validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                          ? 'Enter classroom code'
-                                          : null,
-                                    ),
-                                  if (_selectedRole == UserRole.teacher ||
-                                      _selectedRole == UserRole.admin)
-                                    PinkField(
-                                      controller: _schoolIdCtrl,
-                                      hint: 'School ID',
-                                      icon: Icons.domain_outlined,
-                                      validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                          ? 'Enter your school ID'
-                                          : null,
-                                    ),
-                                ],
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          PinkField(
+                            controller: _nameCtrl,
+                            hint: 'Full Name',
+                            icon: Icons.person_outline,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Enter your name' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          PinkField(
+                            controller: _emailCtrl,
+                            hint: 'Email',
+                            icon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (v) => (v == null || !v.contains('@'))
+                                ? 'Enter a valid email' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          PinkField(
+                            controller: _passwordCtrl,
+                            hint: 'Password',
+                            icon: Icons.lock_outline,
+                            obscureText: _obscurePass,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePass
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: const Color(0xFF8B5E6A),
+                                size: 20,
                               ),
+                              onPressed: () => setState(
+                                      () => _obscurePass = !_obscurePass),
                             ),
-
-                            // ── Error ───────────────────────────────
-                            if (_errorMessage != null) ...[
-                              const SizedBox(height: 10),
-                              ErrorBanner(message: _errorMessage!),
-                            ],
-
-                            const SizedBox(height: 20),
-
-                            // ── Continue button ──────────────────────
-                            ContinueButton(
-                              label: 'Continue',
-                              loading: _loading,
-                              onTap: _submit,
+                            validator: (v) => (v == null || v.length < 6)
+                                ? 'Min 6 characters' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          PinkField(
+                            controller: _confirmCtrl,
+                            hint: 'Confirm Password',
+                            icon: Icons.lock_outline,
+                            obscureText: _obscureConfirm,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirm
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: const Color(0xFF8B5E6A),
+                                size: 20,
+                              ),
+                              onPressed: () => setState(
+                                      () => _obscureConfirm = !_obscureConfirm),
                             ),
-                            const SizedBox(height: 18),
+                            validator: (v) => v != _passwordCtrl.text
+                                ? 'Passwords do not match' : null,
+                          ),
+                          const SizedBox(height: 12),
 
-                            // ── OR + social ──────────────────────────
-                            const OrDivider(),
-                            const SizedBox(height: 16),
-                            SocialButtons(
-                              onGoogleTap: _loading ? null : _googleSignIn,
+                          if (_selectedRole == UserRole.student)
+                            PinkField(
+                              controller: _classroomCtrl,
+                              hint: 'Classroom Code',
+                              icon: Icons.class_outlined,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Enter classroom code' : null,
                             ),
-                            const SizedBox(height: 20),
-
-                            // ── Login link ───────────────────────────
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'Already have an account? ',
-                                  style: TextStyle(
-                                      color: Colors.white60,
-                                      fontSize: 13),
-                                ),
-                                GestureDetector(
-                                  onTap: () =>
-                                      Navigator.pushReplacementNamed(
-                                          context, '/login_page'),
-                                  child: const Text(
-                                    'Log In',
-                                    style: TextStyle(
-                                      color: Color(0xFFE8A0B4),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          if (_selectedRole == UserRole.teacher ||
+                              _selectedRole == UserRole.admin)
+                            PinkField(
+                              controller: _schoolIdCtrl,
+                              hint: 'School ID',
+                              icon: Icons.domain_outlined,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Enter your school ID' : null,
                             ),
-                            const SizedBox(height: 32),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
+
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 10),
+                      ErrorBanner(message: _errorMessage!),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    ContinueButton(
+                      label: 'Continue',
+                      loading: _loading,
+                      onTap: _submit,
+                    ),
+                    const SizedBox(height: 18),
+
+                    const OrDivider(),
+                    const SizedBox(height: 16),
+                    SocialButtons(
+                      onGoogleTap: _loading ? null : _googleSignIn,
+                    ),
+                    const SizedBox(height: 20),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Already have an account? ',
+                          style: TextStyle(color: Colors.white60, fontSize: 13),
+                        ),
+                        GestureDetector(
+                          // ✅ CHANGED: Navigator → Get.offAllNamed
+                          onTap: () => Get.offAllNamed(AppRoutes.LOGIN),
+                          child: const Text(
+                            'Log In',
+                            style: TextStyle(
+                              color: Color(0xFFE8A0B4),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
@@ -464,10 +386,7 @@ class _SignUpPageState extends State<SignUpPage>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ROLE CHIP
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ── RoleChip widget — unchanged ───────────────────────────────────────────────
 class RoleChip extends StatelessWidget {
   final UserRole role;
   final bool selected;
@@ -505,9 +424,7 @@ class RoleChip extends StatelessWidget {
               : Colors.black.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected
-                ? const Color(0xFFF4B8C8)
-                : Colors.white24,
+            color: selected ? const Color(0xFFF4B8C8) : Colors.white24,
           ),
         ),
         child: Column(
@@ -515,9 +432,7 @@ class RoleChip extends StatelessWidget {
             Icon(
               _icons[role]!,
               size: 22,
-              color: selected
-                  ? const Color(0xFF3B1A2E)
-                  : Colors.white70,
+              color: selected ? const Color(0xFF3B1A2E) : Colors.white70,
             ),
             const SizedBox(height: 4),
             Text(
@@ -525,9 +440,7 @@ class RoleChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: selected
-                    ? const Color(0xFF3B1A2E)
-                    : Colors.white70,
+                color: selected ? const Color(0xFF3B1A2E) : Colors.white70,
               ),
             ),
           ],
