@@ -103,7 +103,7 @@ class StudentProfilePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const _BottomNavBar(),
+
     );
   }
 }
@@ -273,23 +273,23 @@ class _PersonalDetailsCard extends StatelessWidget {
   }
 }
 
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.accent,
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: const [
-          Icon(Icons.home_outlined, color: Colors.black54),
-          Icon(Icons.chat_bubble_outline, color: Colors.black54),
-          Icon(Icons.school_outlined, color: Colors.black54),
-          Icon(Icons.settings, color: Colors.black87),
-        ],
-      ),
-    );
-  }
-}
+// class _BottomNavBar extends StatelessWidget {
+//   const _BottomNavBar();
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       color: AppColors.accent,
+//       padding: const EdgeInsets.symmetric(vertical: 10),
+//       child: Row(
+//         mainAxisAlignment: MainAxisAlignment.spaceAround,
+//         children: const [
+//           Icon(Icons.home_outlined, color: Colors.black54),
+//           Icon(Icons.chat_bubble_outline, color: Colors.black54),
+//           Icon(Icons.school_outlined, color: Colors.black54),
+//           Icon(Icons.settings, color: Colors.black87),
+//         ],
+//       ),
+//     );
+//   }
+// }
