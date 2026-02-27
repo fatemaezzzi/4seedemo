@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';                              // ← ADDED
+import 'package:forsee_demo_one/app/routes/app_routes.dart'; // ← ADDED
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WELCOME PAGE SECOND
@@ -39,7 +41,6 @@ class _WelcomePageSecondState extends State<WelcomePageSecond>
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Background image
           Positioned.fill(
             child: Image.asset(
               'assets/welcome-page-second.png',
@@ -60,15 +61,15 @@ class _WelcomePageSecondState extends State<WelcomePageSecond>
                       children: [
                         _WelcomeButton(
                           label: 'Already have an account?',
-                          onTap: () =>
-                              Navigator.pushNamed(context, '/login_page'),
+                          // ✅ CHANGED: Navigator → Get.toNamed with correct route
+                          onTap: () => Get.toNamed(AppRoutes.LOGIN),
                         ),
                         const SizedBox(height: 16),
                         _WelcomeButton(
                           label: 'Create an account',
                           filled: true,
-                          onTap: () =>
-                              Navigator.pushNamed(context, '/account_selection'),
+                          // ✅ CHANGED: Navigator → Get.toNamed with correct route
+                          onTap: () => Get.toNamed(AppRoutes.ACCOUNT_SELECT),
                         ),
                       ],
                     ),
@@ -100,7 +101,6 @@ class AccountSelectionPage extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Background image
           Positioned.fill(
             child: Image.asset(
               'assets/account-selection-page.png',
@@ -111,19 +111,18 @@ class AccountSelectionPage extends StatelessWidget {
           SafeArea(
             child: Column(
               children: [
-                // Back button
                 Align(
                   alignment: Alignment.centerLeft,
                   child: IconButton(
                     icon: const Icon(Icons.arrow_back_ios,
                         color: Colors.white70, size: 20),
-                    onPressed: () => Navigator.pop(context),
+                    // ✅ CHANGED: Navigator.pop → Get.back()
+                    onPressed: () => Get.back(),
                   ),
                 ),
 
                 SizedBox(height: screenHeight * 0.02),
 
-                // Scrollable role cards
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -131,8 +130,9 @@ class AccountSelectionPage extends StatelessWidget {
                       _RoleCard(
                         role: 'Admin',
                         clipartPath: 'assets/admin.png',
-                        onTap: () => Navigator.pushNamed(
-                          context, '/sign_up',
+                        // ✅ CHANGED: Navigator.pushNamed → Get.toNamed
+                        onTap: () => Get.toNamed(
+                          AppRoutes.SIGN_UP,
                           arguments: 'admin',
                         ),
                       ),
@@ -140,8 +140,8 @@ class AccountSelectionPage extends StatelessWidget {
                       _RoleCard(
                         role: 'Teacher',
                         clipartPath: 'assets/teacher.png',
-                        onTap: () => Navigator.pushNamed(
-                          context, '/sign_up',
+                        onTap: () => Get.toNamed(
+                          AppRoutes.SIGN_UP,
                           arguments: 'teacher',
                         ),
                       ),
@@ -149,8 +149,8 @@ class AccountSelectionPage extends StatelessWidget {
                       _RoleCard(
                         role: 'Student',
                         clipartPath: 'assets/student.png',
-                        onTap: () => Navigator.pushNamed(
-                          context, '/sign_up',
+                        onTap: () => Get.toNamed(
+                          AppRoutes.SIGN_UP,
                           arguments: 'student',
                         ),
                       ),
@@ -168,7 +168,7 @@ class AccountSelectionPage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCAL WIDGETS
+// LOCAL WIDGETS — all unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _WelcomeButton extends StatelessWidget {
@@ -212,8 +212,6 @@ class _WelcomeButton extends StatelessWidget {
   }
 }
 
-// ── Role card: clipart image on top, pink label button below ──────────────────
-
 class _RoleCard extends StatelessWidget {
   final String role;
   final String clipartPath;
@@ -234,7 +232,6 @@ class _RoleCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Clipart image ────────────────────────────────────────────
           Image.asset(
             clipartPath,
             width: screenWidth * 0.60,
@@ -253,7 +250,6 @@ class _RoleCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // ── Pink pill label ──────────────────────────────────────────
           Container(
             width: screenWidth * 0.70,
             padding: const EdgeInsets.symmetric(vertical: 14),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../auth_service.dart';
+import 'package:get/get.dart';                           // ← ADDED
+import 'package:forsee_demo_one/controllers/auth_controller.dart'; // ← ADDED
+import 'package:forsee_demo_one/app/routes/app_routes.dart';       // ← ADDED
+import '../services/auth_service.dart';
 import '../widgets/app_design_widgets.dart';
 
 class LoginPage extends StatefulWidget {
@@ -41,19 +44,21 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
-  // ── Email/password login ───────────────────────────────────────────────────
+  // ── Email/password login ──────────────────────────────────────────────────
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _errorMessage = null; });
     try {
-      await _authService.logIn(
+      // ✅ CHANGED: Use AuthController.login() — it redirects by role automatically
+      await AuthController.to.login(
         email: _emailCtrl.text,
         password: _passwordCtrl.text,
       );
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home_page');
-    } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _friendlyError(e.code));
+      // No Navigator call needed — AuthController._redirectByRole() handles it
+      final controllerError = AuthController.to.error.value;
+      if (controllerError.isNotEmpty) {
+        setState(() => _errorMessage = controllerError);
+      }
     } catch (e) {
       debugPrint('Login error: $e');
       setState(() => _errorMessage = e.toString());
@@ -62,20 +67,19 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
-  // ── Google sign in ─────────────────────────────────────────────────────────
+  // ── Google sign in ────────────────────────────────────────────────────────
   Future<void> _googleSignIn() async {
     setState(() { _loading = true; _errorMessage = null; });
     try {
       final result = await _authService.signInWithGoogle();
-      if (result == null) { // user cancelled
+      if (result == null) {
         setState(() => _loading = false);
         return;
       }
-      if (!mounted) return;
 
       if (!result.isNewUser) {
-        // Existing user → go straight to home
-        Navigator.pushReplacementNamed(context, '/home_page');
+        // ✅ CHANGED: AuthController stream handles redirect automatically
+        // Just update appUser and let the listener do its job
         return;
       }
 
@@ -90,7 +94,7 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
-  // ── Role selection dialog for new social users ─────────────────────────────
+  // ── Role selection dialog for new social users ────────────────────────────
   Future<void> _showRoleDialog(User firebaseUser) async {
     UserRole selectedRole = UserRole.student;
     final classroomCtrl = TextEditingController();
@@ -113,7 +117,6 @@ class _LoginPageState extends State<LoginPage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle bar
               Center(
                 child: Container(
                   width: 40, height: 4,
@@ -132,7 +135,6 @@ class _LoginPageState extends State<LoginPage>
                   style: TextStyle(color: Colors.white54, fontSize: 13)),
               const SizedBox(height: 20),
 
-              // Role chips
               Row(
                 children: UserRole.values.map((role) {
                   final labels = {
@@ -191,7 +193,6 @@ class _LoginPageState extends State<LoginPage>
 
               const SizedBox(height: 16),
 
-              // Conditional extra field
               if (selectedRole == UserRole.student)
                 PinkField(
                   controller: classroomCtrl,
@@ -208,15 +209,15 @@ class _LoginPageState extends State<LoginPage>
 
               const SizedBox(height: 20),
 
-              // Complete button
               ContinueButton(
                 label: 'Complete Sign Up',
                 loading: false,
                 onTap: () async {
-                  Navigator.pop(ctx); // close sheet
+                  Navigator.pop(ctx);
                   setState(() => _loading = true);
                   try {
-                    await _authService.completeSocialSignUp(
+                    // ✅ CHANGED: Use AuthController — redirects automatically
+                    await AuthController.to.completeSocialSignUp(
                       firebaseUser: firebaseUser,
                       role: selectedRole,
                       classroomId: selectedRole == UserRole.student
@@ -224,8 +225,7 @@ class _LoginPageState extends State<LoginPage>
                       schoolId: selectedRole != UserRole.student
                           ? schoolIdCtrl.text.trim() : null,
                     );
-                    if (!mounted) return;
-                    Navigator.pushReplacementNamed(context, '/home_page');
+                    // No Navigator call — AuthController handles redirect
                   } catch (e) {
                     setState(() => _errorMessage = e.toString());
                   } finally {
@@ -258,7 +258,6 @@ class _LoginPageState extends State<LoginPage>
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Background image
           Positioned.fill(
             child: Image.asset('assets/login-page.png', fit: BoxFit.cover),
           ),
@@ -338,7 +337,6 @@ class _LoginPageState extends State<LoginPage>
                       const OrDivider(),
                       const SizedBox(height: 16),
 
-                      // ── Social buttons with real callbacks ─────────────
                       SocialButtons(
                         onGoogleTap: _loading ? null : _googleSignIn,
                       ),
@@ -350,7 +348,8 @@ class _LoginPageState extends State<LoginPage>
                           const Text("Don't have an account? ",
                               style: TextStyle(color: Colors.white60, fontSize: 14)),
                           GestureDetector(
-                            onTap: () => Navigator.pushNamed(context, '/sign_up'),
+                            // ✅ CHANGED: /sign_up → AppRoutes.SIGN_UP via GetX
+                            onTap: () => Get.toNamed(AppRoutes.SIGN_UP),
                             child: const Text('Sign Up',
                                 style: TextStyle(
                                   color: Color(0xFFE8A0B4),
