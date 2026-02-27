@@ -1,6 +1,6 @@
 {
-    "name": "forc",
-    "short_name": "forc",
+    "name": "forsee_web",
+    "short_name": "forsee_web",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
