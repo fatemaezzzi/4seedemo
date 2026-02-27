@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
 
 class StudentDashboard extends StatelessWidget {
   const StudentDashboard({super.key});

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/pages/profile/profile_subpages/student/mental_health_quiz.dart';
 import '../../theme/app_theme.dart';
 import 'profile_subpages/student/teacher_remarks_page.dart';
 import 'profile_subpages/student/contact_teacher_page.dart';
 import 'profile_subpages/shared/edit_personal_info_page.dart';
-import 'profile_subpages/shared/logout_dialog.dart';
 
 class StudentProfilePage extends StatelessWidget {
   const StudentProfilePage({super.key});
@@ -97,7 +97,7 @@ class StudentProfilePage extends StatelessWidget {
             // Logout Button
             _OutlineButton(
               label: 'Logout',
-              onTap: () => showLogoutDialog(context),
+              onTap: () => AuthController.to.logout(),
             ),
             const SizedBox(height: 24),
           ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:forsee_demo_one/pages/teacher/classroom_page.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
+import 'package:forsee_demo_one/app/routes/app_routes.dart';
 
 class TeacherDashboard extends StatefulWidget {
   const TeacherDashboard({super.key});
@@ -290,93 +293,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   // ── PROFILE SHEET ───────────────────────────────────────────────────────────
 
   void _openProfile() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.55,
-          decoration: const BoxDecoration(
-            color: Color(0xFF3B2028),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white30,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Avatar
-              CircleAvatar(
-                radius: 44,
-                backgroundColor: const Color(0xFFE9C2D7),
-                child: Text(
-                  teacherName[0],
-                  style: const TextStyle(
-                    fontSize: 38,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF512D38),
-                    fontFamily: 'Pridi',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                teacherName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Pridi',
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Science Teacher  •  Classes: 12-B, 10-A, 9-C',
-                style: TextStyle(color: Colors.white54, fontSize: 13),
-              ),
-              const SizedBox(height: 30),
-              // Action tiles
-              _profileTile(Icons.edit, 'Edit Profile', () => Navigator.pop(context)),
-              _profileTile(Icons.lock_outline, 'Change Password', () => Navigator.pop(context)),
-              _profileTile(
-                Icons.logout,
-                'Logout',
-                    () {
-                  Navigator.pop(context);
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-                color: Colors.redAccent,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _profileTile(IconData icon, String label, VoidCallback onTap,
-      {Color color = Colors.white}) {
-    return ListTile(
-      leading: Icon(icon, color: color, size: 22),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 15,
-          fontFamily: 'Pridi',
-        ),
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.white30),
-      onTap: onTap,
-    );
+    Get.toNamed(AppRoutes.TEACHER_PROFILE, arguments: {'name': teacherName});
   }
 
   // ── RISKY STUDENT DETAIL ────────────────────────────────────────────────────
@@ -443,14 +360,21 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   Widget _detailRow(String label, String value, {Color? valueColor}) {
     return Row(
       children: [
-        Text('$label: ',
-            style: const TextStyle(color: Colors.white54, fontSize: 14)),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+        Flexible(
+          child: Text(
+            '$label: ',
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: valueColor ?? Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ],
@@ -507,7 +431,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   },
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 20)
             ],
           ),
         ),
@@ -521,13 +445,16 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          'Welcome $teacherName!',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Pridi',
+        Expanded(
+          child: Text(
+            'Welcome $teacherName!',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Pridi',
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         Row(

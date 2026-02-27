@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/pages/profile/admin_profile_page.dart';
 import '../../widgets/settings_widget.dart';
 import '../shared/change_password_page.dart';
 import '../shared/linked_account_page.dart';
@@ -40,6 +41,12 @@ class AdminSettingsPage extends StatelessWidget {
                     MaterialPageRoute(
                         builder: (_) => const LinkedAccountPage())),
               ),
+              SettingsItem(
+                label: 'Profile',
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(
+                        builder: (_) => const AdminProfilePage())),
+              ),
             ]),
             const SettingsSectionTitle('Help and Support'),
             SettingsCard(items: [
@@ -65,7 +72,6 @@ class AdminSettingsPage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(),
     );
   }
 }

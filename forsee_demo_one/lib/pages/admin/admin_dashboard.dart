@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
+import 'package:forsee_demo_one/pages/settings/admin_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
 import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
 
@@ -287,16 +289,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
         width: double.infinity,
         color: const Color(0xFFA8D0BC),
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 48),
-        child: const Text(
-          'ADMIN DASHBOARD',
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: Color(0xFF3B2F2F),
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Pridi',
-            letterSpacing: 1.2,
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'ADMIN DASHBOARD',
+              style: TextStyle(
+                color: Color(0xFF3B2F2F),
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Pridi',
+                letterSpacing: 1.2,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout, color: Color(0xFF3B2F2F)),
+              onPressed: () => AuthController.to.logout(),
+              tooltip: 'Logout',
+            ),
+          ],
         ),
       ),
     );
@@ -486,6 +497,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const StudentDatabasePage()),
+                ).then((_) => setState(() => _selectedNavIndex = 0));
+              }
+              if (e.key == 3) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AdminSettingsPage()),
                 ).then((_) => setState(() => _selectedNavIndex = 0));
               }
             },

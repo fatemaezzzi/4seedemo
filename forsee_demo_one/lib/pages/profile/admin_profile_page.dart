@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import '../../theme/app_theme.dart';
 import 'profile_subpages/admin/admin_student_profile_page.dart';
 import 'profile_subpages/admin/admin_teacher_profile_page.dart';
@@ -6,7 +7,6 @@ import 'profile_subpages/admin/admin_report_account_page.dart';
 import 'profile_subpages/teacher/check_report_page.dart';
 import 'profile_subpages/shared/calendar_page.dart';
 import 'profile_subpages/shared/edit_personal_info_page.dart';
-import 'profile_subpages/shared/logout_dialog.dart';
 
 class AdminProfilePage extends StatelessWidget {
   const AdminProfilePage({super.key});
@@ -89,7 +89,7 @@ class AdminProfilePage extends StatelessWidget {
             const SizedBox(height: 12),
 
             // Logout
-            _OutlineButton(label: 'Logout', onTap: () => showLogoutDialog(context)),
+            _OutlineButton(label: 'Logout', onTap: () => AuthController.to.logout()),
             const SizedBox(height: 24),
           ],
         ),
