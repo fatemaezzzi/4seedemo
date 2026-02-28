@@ -67,8 +67,11 @@ class _AddClassroomPageState extends State<AddClassroomPage> {
 
       setState(() {
         _generatedCode = result['classCode'];
-        // Exact same map shape that _buildClassCard in TeacherDashboard expects
+        // Include 'id' and 'classCode' so ClassroomPage always gets the correct
+        // Firestore classCode to query students — never falls back to title.
         _createdClassroom = {
+          'id':           result['id'],
+          'classCode':    result['classCode'],
           'title':        result['title'],
           'subject':      result['subject'],
           'semester':     result['semester'],

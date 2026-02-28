@@ -157,8 +157,12 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       for (final doc in classroomsSnap.docs) {
         final ids = List<String>.from(
             (doc.data()['studentIds'] as List<dynamic>?) ?? []);
-        classStudents[doc.id] = ids;
-        classroomTitles[doc.id] = doc.data()['title'] as String? ?? doc.id;
+        // Students store classroomId = classCode (e.g. "AB12CD"), not the Firestore doc id.
+        // Fall back to doc.id if classCode is missing (older docs).
+        final classCode = doc.data()['classCode'] as String?;
+        final key = (classCode != null && classCode.isNotEmpty) ? classCode : doc.id;
+        classStudents[key] = ids;
+        classroomTitles[key] = doc.data()['title'] as String? ?? key;
       }
 
       final allStudentIds = classStudents.values
