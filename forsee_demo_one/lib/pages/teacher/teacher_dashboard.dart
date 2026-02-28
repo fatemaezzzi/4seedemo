@@ -300,15 +300,13 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       MaterialPageRoute(builder: (_) => const AddClassroomPage()),
     );
     if (result != null) {
-      setState(() {
-        _classrooms.add(_ClassroomData(
-          classId:         result['id']           as String? ?? '',
-          title:           result['title']         as String? ?? 'New Class',
-          totalStudents:   result['participants']  as int?    ?? 0,
-          highRiskCount:   0,
-          mediumRiskCount: 0,
-        ));
-      });
+      // Reload from Firestore as the single source of truth.
+      // Previously we also did a local setState append here, which caused the
+      // new classroom to appear twice — once from the local append (showing the
+      // title) and again when Firestore returned the same doc (showing the
+      // classroom code as the fallback title).
+      await _loadDashboard();
+
       // Jump the PageView to the newly added card
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_pageController.hasClients) {

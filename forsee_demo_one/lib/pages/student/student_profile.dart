@@ -15,6 +15,10 @@ import 'package:get/get.dart';
 import 'package:forsee_demo_one/model/student_model.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
+import 'package:forsee_demo_one/pages/support/ngo_support_page.dart';
+import 'package:forsee_demo_one/pages/support/financial_support_page.dart';
+import 'package:forsee_demo_one/pages/support/counseling_page.dart';
+import 'package:forsee_demo_one/pages/support/mental_health_page.dart';
 
 class StudentProfilePage extends StatefulWidget {
   final StudentModel student;
@@ -68,45 +72,21 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
   }
 
-  void _showResource(String type) {
-    final data = {
-      'NGO':              {'title':'NGO Support',             'icon':Icons.handshake_outlined,              'color':Colors.tealAccent,    'details':['Pratham Education Foundation','CRY – Child Rights and You','Teach For India'],                                        'action':'Contact NGO'},
-      'Financial Support':{'title':'Financial Support',       'icon':Icons.account_balance_wallet_outlined, 'color':Colors.amberAccent,   'details':['PM Scholarship Scheme','National Means-cum-Merit Scholarship','State Government Scholarship'],                         'action':'Apply for Support'},
-      'Counseling':       {'title':'Counseling Services',     'icon':Icons.chat_bubble_outline,             'color':Colors.orangeAccent,  'details':['School Counselor – Ms. Priya','iCall Helpline: 9152987821','Vandrevala Foundation: 1860-2662-345'],                    'action':'Book Session'},
-      'Mental Health':    {'title':'Mental Health Resources', 'icon':Icons.favorite_border,                 'color':Colors.pinkAccent,    'details':['iCall: 9152987821','Vandrevala Foundation: 1860-2662-345','NIMHANS Helpline: 080-46110007'],                           'action':'Get Help'},
-    };
-    final r = data[type]!;
-    final c = r['color'] as Color;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(color: Color(0xFF3B2028), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Row(children: [
-            CircleAvatar(backgroundColor: c.withOpacity(0.15), child: Icon(r['icon'] as IconData, color: c)),
-            const SizedBox(width: 12),
-            Text(r['title'] as String, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-          ]),
-          const SizedBox(height: 16),
-          ...(r['details'] as List<String>).map((d) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(children: [Icon(Icons.arrow_forward_ios, size: 12, color: c), const SizedBox(width: 8), Text(d, style: const TextStyle(color: Colors.white70, fontSize: 14))]),
-          )),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, height: 48,
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE9C2D7), foregroundColor: const Color(0xFF512D38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              child: Text(r['action'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-            ),
-          ),
-        ]),
-      ),
-    );
+  void _openResource(String type) {
+    switch (type) {
+      case 'NGO':
+        Get.to(() => NgoSupportPage(student: _s));
+        break;
+      case 'Financial Support':
+        Get.to(() => FinancialSupportPage(student: _s));
+        break;
+      case 'Counseling':
+        Get.to(() => CounselingPage(student: _s));
+        break;
+      case 'Mental Health':
+        Get.to(() => MentalHealthPage(student: _s));
+        break;
+    }
   }
 
   List<Map<String, dynamic>> get _suggestions {
@@ -306,7 +286,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   Widget _resourceCard(String title, IconData icon) => Expanded(
     child: GestureDetector(
-      onTap: () => _showResource(title),
+      onTap: () => _openResource(title),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: const Color(0xFFF4BFDB), borderRadius: BorderRadius.circular(12)),
