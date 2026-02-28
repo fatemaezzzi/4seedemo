@@ -7,6 +7,10 @@ import 'package:forsee_demo_one/pages/student/report_page.dart';
 import 'package:forsee_demo_one/pages/profile/student_profile_page.dart';
 import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STUDENT DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
 
@@ -19,7 +23,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   final List<Widget> _pages = const [
     _DashboardHome(),
-    ReportPage(),          // no args needed — ReportPage reads from Get.arguments
+    ReportPage(),
     StudentProfilePage(),
     StudentSettingsPage(),
   ];
@@ -30,24 +34,20 @@ class _StudentDashboardState extends State<StudentDashboard> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstTime());
   }
 
-  /// Check if student has completed quiz — stored in Firestore users doc
-  /// instead of SharedPreferences so it persists across devices
   Future<void> _checkFirstTime() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || !mounted) return;
-
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
       final quizDone = doc.data()?['quizCompleted'] as bool? ?? false;
       if (!quizDone && mounted) {
-        // Navigate to quiz — use whatever route you have defined
-        // If STUDENT_QUIZ_START doesn't exist yet in AppRoutes, comment this out
-        // and add the route first, then uncomment
+        // Uncomment when STUDENT_QUIZ_START route is defined in AppRoutes:
         // Get.toNamed(AppRoutes.STUDENT_QUIZ_START);
       }
-    } catch (_) {
-      // Silently fail — don't block dashboard on quiz check error
-    }
+    } catch (_) {}
   }
 
   @override
@@ -63,7 +63,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 }
 
-// ── DASHBOARD HOME BODY ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD HOME — loads real data from Firebase
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _DashboardHome extends StatefulWidget {
   const _DashboardHome();
@@ -76,15 +78,15 @@ class _DashboardHomeState extends State<_DashboardHome> {
   final _db   = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
-  bool   _loading      = true;
-  String _studentName  = '';
-  String _className    = '';
-  String _rollNo       = '';
-  int    _attendance   = 0;
-  int    _totalDays    = 0;
-  int    _presentDays  = 0;
-  String _lastG2       = '—';
-  String _teacherRemark= 'No remarks yet.';
+  bool   _loading       = true;
+  String _studentName   = '';
+  String _className     = '';
+  String _rollNo        = '';
+  int    _attendance    = 0;
+  int    _totalDays     = 0;
+  int    _presentDays   = 0;
+  String _lastG2        = '—';
+  String _teacherRemark = 'No remarks yet.';
 
   @override
   void initState() {
@@ -94,45 +96,46 @@ class _DashboardHomeState extends State<_DashboardHome> {
 
   Future<void> _loadStudentData() async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) { setState(() => _loading = false); return; }
+    if (uid == null) {
+      setState(() => _loading = false);
+      return;
+    }
 
     try {
-      // 1) User doc → name, className, rollNo
-      final userDoc = await _db.collection('users').doc(uid).get();
+      // 1) users/{uid} → name, className, studentId (display), studentDocId
+      final userDoc  = await _db.collection('users').doc(uid).get();
       final userData = userDoc.data() ?? {};
-      _studentName = userData['name'] as String? ?? 'Student';
+
+      _studentName = userData['name']      as String? ?? 'Student';
       _className   = userData['className'] as String? ?? '';
       _rollNo      = userData['studentId'] as String? ?? '';
 
-      // 2) Student doc (by matching name or storing studentDocId in users doc)
-      //    Best practice: store firestoreId in users doc when student registers
       final studentDocId = userData['studentDocId'] as String?;
 
       if (studentDocId != null) {
+        // 2) students/{studentDocId} → G2, teacherRemark
         final studentDoc = await _db.collection('students').doc(studentDocId).get();
-        final sData = studentDoc.data() ?? {};
+        final sData      = studentDoc.data() ?? {};
 
-        // Attendance from staging
+        final g2 = (sData['G2'] as num?)?.toInt();
+        _lastG2  = g2 != null ? '$g2 / 20' : '—';
+
+        _teacherRemark = userData['teacherRemark'] as String?
+            ?? sData['teacherRemark']  as String?
+            ?? 'No remarks yet.';
+
+        // 3) staging/{studentDocId} → attendance
         final stagingDoc = await _db.collection('staging').doc(studentDocId).get();
-        final att = stagingDoc.data()?['attendance'] as Map<String, dynamic>?;
+        final att        = stagingDoc.data()?['attendance'] as Map<String, dynamic>?;
         _totalDays   = (att?['totalDays']   as num?)?.toInt() ?? 0;
         _presentDays = (att?['presentDays'] as num?)?.toInt() ?? 0;
         _attendance  = _totalDays > 0
             ? ((_presentDays / _totalDays) * 100).round()
-            : (sData['absences'] != null ? 0 : 0);
-
-        // G2 as last test score (out of 20)
-        final g2 = (sData['G2'] as num?)?.toInt();
-        _lastG2 = g2 != null ? '$g2 / 20' : '—';
-
-        // Remarks from users doc or a remarks field
-        _teacherRemark = userData['teacherRemark'] as String?
-            ?? sData['teacherRemark'] as String?
-            ?? 'No remarks yet.';
+            : 0;
       }
 
       setState(() => _loading = false);
-    } catch (e) {
+    } catch (_) {
       setState(() => _loading = false);
     }
   }
@@ -140,41 +143,40 @@ class _DashboardHomeState extends State<_DashboardHome> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFA8D0BC)));
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFA8D0BC)),
+      );
     }
 
+    final subtitle = _className.isNotEmpty && _rollNo.isNotEmpty
+        ? '$_className | Roll No. $_rollNo'
+        : _studentName;
+
+    final attendanceLabel = _totalDays > 0
+        ? 'My Attendance: $_attendance%  ($_presentDays / $_totalDays days)'
+        : 'My Attendance: $_attendance%';
+
     return Column(children: [
-      _WaveHeader(
-        name:     _studentName,
-        subtitle: _className.isNotEmpty && _rollNo.isNotEmpty
-            ? '$_className | Roll No. $_rollNo'
-            : _studentName,
-      ),
+      _WaveHeader(name: _studentName, subtitle: subtitle),
       Expanded(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(children: [
             const SizedBox(height: 24),
-
             _InfoTile(
-              label: _totalDays > 0
-                  ? 'My Attendance: $_attendance%  ($_presentDays/$_totalDays days)'
-                  : 'My Attendance: $_attendance%',
+              label: attendanceLabel,
               icon:  Icons.calendar_today_outlined,
               onTap: () {},
             ),
             const SizedBox(height: 12),
-
             _InfoTile(
               label: 'Last Test Score: $_lastG2',
               icon:  Icons.description_outlined,
               onTap: () {},
             ),
             const SizedBox(height: 20),
-
             _TeacherRemarksCard(remark: _teacherRemark),
             const SizedBox(height: 20),
-
             _PerformanceButton(
               onTap: () => Get.toNamed(AppRoutes.STUDENT_REPORT),
             ),
@@ -186,7 +188,9 @@ class _DashboardHomeState extends State<_DashboardHome> {
   }
 }
 
-// ── WAVE HEADER ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// WAVE HEADER
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _WaveHeader extends StatelessWidget {
   final String name;
@@ -204,12 +208,16 @@ class _WaveHeader extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(name,
               style: const TextStyle(
-                  color: Color(0xFF2B1F22), fontSize: 26,
-                  fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                  color: Color(0xFF2B1F22),
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Pridi')),
           const SizedBox(height: 4),
           Text(subtitle,
               style: const TextStyle(
-                  color: Color(0xFF2B1F22), fontSize: 14, fontFamily: 'Pridi')),
+                  color: Color(0xFF2B1F22),
+                  fontSize: 14,
+                  fontFamily: 'Pridi')),
         ]),
       ),
     );
@@ -221,8 +229,12 @@ class _WaveClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
     path.lineTo(0, size.height - 30);
-    path.quadraticBezierTo(size.width * 0.35, size.height + 10, size.width * 0.6, size.height - 25);
-    path.quadraticBezierTo(size.width * 0.8, size.height - 50, size.width, size.height - 20);
+    path.quadraticBezierTo(
+        size.width * 0.35, size.height + 10,
+        size.width * 0.6,  size.height - 25);
+    path.quadraticBezierTo(
+        size.width * 0.8, size.height - 50,
+        size.width,       size.height - 20);
     path.lineTo(size.width, 0);
     path.close();
     return path;
@@ -232,13 +244,19 @@ class _WaveClipper extends CustomClipper<Path> {
   bool shouldReclip(_WaveClipper old) => false;
 }
 
-// ── INFO TILE ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// INFO TILE
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _InfoTile extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  const _InfoTile({required this.label, required this.icon, required this.onTap});
+  const _InfoTile({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -248,10 +266,16 @@ class _InfoTile extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-            color: const Color(0xFF6B4050), borderRadius: BorderRadius.circular(30)),
+            color: const Color(0xFF6B4050),
+            borderRadius: BorderRadius.circular(30)),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Expanded(child: Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Pridi'))),
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontFamily: 'Pridi')),
+          ),
           Icon(icon, color: Colors.white70, size: 20),
         ]),
       ),
@@ -259,7 +283,9 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
-// ── TEACHER REMARKS CARD ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TEACHER REMARKS CARD
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TeacherRemarksCard extends StatelessWidget {
   final String remark;
@@ -271,21 +297,30 @@ class _TeacherRemarksCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-          color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
+          color: const Color(0xFFA8D0BC),
+          borderRadius: BorderRadius.circular(20)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Teacher Remarks',
-            style: TextStyle(color: Color(0xFF2B1F22), fontSize: 16,
-                fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+            style: TextStyle(
+                color: Color(0xFF2B1F22),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Pridi')),
         const SizedBox(height: 12),
         Text(remark,
-            style: const TextStyle(color: Color(0xFF3B2F2F), fontSize: 13,
-                fontFamily: 'Pridi', height: 1.5)),
+            style: const TextStyle(
+                color: Color(0xFF3B2F2F),
+                fontSize: 13,
+                fontFamily: 'Pridi',
+                height: 1.5)),
       ]),
     );
   }
 }
 
-// ── MY PERFORMANCE BUTTON ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MY PERFORMANCE BUTTON
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _PerformanceButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -299,18 +334,26 @@ class _PerformanceButton extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-            color: const Color(0xFF6B4050), borderRadius: BorderRadius.circular(30)),
-        child: const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('My Performance',
-              style: TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Pridi')),
-          Icon(Icons.arrow_forward, color: Color(0xFFA8D0BC), size: 20),
-        ]),
+            color: const Color(0xFF6B4050),
+            borderRadius: BorderRadius.circular(30)),
+        child: const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('My Performance',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontFamily: 'Pridi')),
+              Icon(Icons.arrow_forward, color: Color(0xFFA8D0BC), size: 20),
+            ]),
       ),
     );
   }
 }
 
-// ── BOTTOM NAV ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BOTTOM NAV
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
@@ -319,7 +362,7 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [
+    const items = [
       (Icons.home_rounded,      'Home'),
       (Icons.bar_chart_rounded, 'Report'),
       (Icons.person_outline,    'Profile'),
@@ -337,15 +380,21 @@ class _BottomNav extends StatelessWidget {
             onTap: () => onTap(e.key),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Icon(e.value.$1,
-                  color: selected ? const Color(0xFF2B1F22) : Colors.black38,
+                  color: selected
+                      ? const Color(0xFF2B1F22)
+                      : Colors.black38,
                   size: selected ? 28 : 24),
               const SizedBox(height: 2),
               Text(e.value.$2,
                   style: TextStyle(
-                    color: selected ? const Color(0xFF2B1F22) : Colors.black38,
-                    fontSize: 10, fontFamily: 'Pridi',
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                  )),
+                      color: selected
+                          ? const Color(0xFF2B1F22)
+                          : Colors.black38,
+                      fontSize: 10,
+                      fontFamily: 'Pridi',
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal)),
             ]),
           );
         }).toList(),
