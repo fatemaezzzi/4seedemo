@@ -34,6 +34,7 @@ abstract class AppRoutes {
   static const STUDENT_SETTINGS  = '/student-settings';
   static const STUDENT_REPORT    = '/student-report';
   static const STUDENT_DATABASE  = '/student-database';
+  static const STUDENT_QUIZ_START = '/student-quiz-start';
 
   // ── Shared (all roles) ───────────────────────────────────────────────────────
   static const CHANGE_PASSWORD  = '/change-password';
