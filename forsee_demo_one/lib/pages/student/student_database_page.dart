@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
+import 'package:forsee_demo_one/pages/admin/teacher_analysis_page.dart';
 
 // ── COLORS ─────────────────────────────────────────────────────────────────────
 // 512D38  Mauve Shadow    (darkest background)

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/pages/welcome_page_seond.dart';
 
-
 class WelcomePageFirst extends StatelessWidget {
   const WelcomePageFirst({super.key});
 
@@ -16,40 +15,42 @@ class WelcomePageFirst extends StatelessWidget {
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 825), // space above
-            SizedBox(
-              width: 560,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WelcomePageSecond(),
+        body: SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end, // pushes button to bottom
+            children: [
+              SizedBox(
+                width: 560,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                  );
-                },
-                child: const Text(
-                  "Get Started",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const WelcomePageSecond(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    "Get Started",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 40), // bottom padding
+            ],
+          ),
         ),
       ),
     );

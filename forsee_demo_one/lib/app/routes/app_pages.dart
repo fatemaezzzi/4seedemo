@@ -21,7 +21,7 @@ import 'package:forsee_demo_one/pages/teacher/classroom_page.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
 import 'package:forsee_demo_one/pages/teacher/create_marks_entry_page.dart';
 import 'package:forsee_demo_one/pages/teacher/review_submit_page.dart';
-import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
+import 'package:forsee_demo_one/pages/admin/teacher_analysis_page.dart';
 import 'package:forsee_demo_one/pages/teacher/upload_hub_page.dart';
 
 // ── Teacher-only pages ────────────────────────────────────────────────────────

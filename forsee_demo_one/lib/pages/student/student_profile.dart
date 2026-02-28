@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:forsee_demo_one/model/student_model.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
+import 'package:forsee_demo_one/pages/student/report_page.dart';
 
 class StudentProfilePage extends StatefulWidget {
   // ✅ Receives a real StudentModel — name, ID, class, etc. all come from here
@@ -48,8 +49,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   };
 
   void _openReport(String type) {
-    Get.toNamed(
-      AppRoutes.STUDENT_REPORT,
+    Get.to(
+          () => const ReportPage(),
       arguments: {
         ..._studentArgs,
         'reportType': type,

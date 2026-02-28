@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/pages/settings/admin_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
-import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
+import 'package:forsee_demo_one/pages/admin/teacher_analysis_page.dart';
 
 // ── DATA MODELS ────────────────────────────────────────────────────────────────
 
