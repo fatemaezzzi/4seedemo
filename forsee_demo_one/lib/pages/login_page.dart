@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:get/get.dart';                           // ← ADDED
-import 'package:forsee_demo_one/controllers/auth_controller.dart'; // ← ADDED
-import 'package:forsee_demo_one/app/routes/app_routes.dart';       // ← ADDED
+import 'package:get/get.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
+import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_design_widgets.dart';
 
@@ -49,12 +49,10 @@ class _LoginPageState extends State<LoginPage>
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _errorMessage = null; });
     try {
-      // ✅ CHANGED: Use AuthController.login() — it redirects by role automatically
       await AuthController.to.login(
         email: _emailCtrl.text,
         password: _passwordCtrl.text,
       );
-      // No Navigator call needed — AuthController._redirectByRole() handles it
       final controllerError = AuthController.to.error.value;
       if (controllerError.isNotEmpty) {
         setState(() => _errorMessage = controllerError);
@@ -78,12 +76,9 @@ class _LoginPageState extends State<LoginPage>
       }
 
       if (!result.isNewUser) {
-        // ✅ CHANGED: AuthController stream handles redirect automatically
-        // Just update appUser and let the listener do its job
         return;
       }
 
-      // New user → ask for role before saving profile
       setState(() => _loading = false);
       await _showRoleDialog(result.firebaseUser);
     } catch (e) {
@@ -216,7 +211,6 @@ class _LoginPageState extends State<LoginPage>
                   Navigator.pop(ctx);
                   setState(() => _loading = true);
                   try {
-                    // ✅ CHANGED: Use AuthController — redirects automatically
                     await AuthController.to.completeSocialSignUp(
                       firebaseUser: firebaseUser,
                       role: selectedRole,
@@ -225,7 +219,6 @@ class _LoginPageState extends State<LoginPage>
                       schoolId: selectedRole != UserRole.student
                           ? schoolIdCtrl.text.trim() : null,
                     );
-                    // No Navigator call — AuthController handles redirect
                   } catch (e) {
                     setState(() => _errorMessage = e.toString());
                   } finally {
@@ -256,8 +249,10 @@ class _LoginPageState extends State<LoginPage>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false, // ← Prevents layout shift on keyboard open
       body: Stack(
         children: [
+          // Background — completely isolated, never affected by form rebuilds
           Positioned.fill(
             child: Image.asset('assets/login-page.png', fit: BoxFit.cover),
           ),
@@ -270,6 +265,7 @@ class _LoginPageState extends State<LoginPage>
                   begin: const Offset(0, 0.06), end: Offset.zero,
                 ).animate(_anim),
                 child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(), // ← No bouncy overscroll
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Column(
                     children: [
@@ -325,11 +321,17 @@ class _LoginPageState extends State<LoginPage>
                         ),
                       ),
 
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 4),
-                        ErrorBanner(message: _errorMessage!),
-                        const SizedBox(height: 8),
-                      ],
+                      // AnimatedSize prevents layout jump when error appears/disappears
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        child: _errorMessage != null
+                            ? Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: ErrorBanner(message: _errorMessage!),
+                        )
+                            : const SizedBox.shrink(),
+                      ),
 
                       ContinueButton(
                           label: 'Continue', loading: _loading, onTap: _submit),
@@ -348,7 +350,6 @@ class _LoginPageState extends State<LoginPage>
                           const Text("Don't have an account? ",
                               style: TextStyle(color: Colors.white60, fontSize: 14)),
                           GestureDetector(
-                            // ✅ CHANGED: /sign_up → AppRoutes.SIGN_UP via GetX
                             onTap: () => Get.toNamed(AppRoutes.SIGN_UP),
                             child: const Text('Sign Up',
                                 style: TextStyle(
