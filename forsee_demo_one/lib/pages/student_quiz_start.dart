@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../quiz_data.dart';
@@ -52,8 +53,15 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
         _selectedOptionIndex = null;
       });
     } else {
-      // ── Get the logged-in student's Firestore UID from AuthController ────
       final studentId = AuthController.to.firebaseUser.value?.uid ?? '';
+
+      // ── Mark quiz as completed so dashboard won't redirect again ────────
+      if (studentId.isNotEmpty) {
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(studentId)
+            .set({'quizCompleted': true}, SetOptions(merge: true));
+      }
 
       Navigator.pushReplacement(
         context,
@@ -61,7 +69,7 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
           builder: (_) => QuizResultPage(
             category:  _category,
             responses: _responses,
-            studentId: studentId, // ✅ passed here
+            studentId: studentId,
           ),
         ),
       );

@@ -44,8 +44,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
           .get();
       final quizDone = doc.data()?['quizCompleted'] as bool? ?? false;
       if (!quizDone && mounted) {
-        // Uncomment when STUDENT_QUIZ_START route is defined in AppRoutes:
-        // Get.toNamed(AppRoutes.STUDENT_QUIZ_START);
+        Get.toNamed(AppRoutes.STUDENT_QUIZ_START);
       }
     } catch (_) {}
   }

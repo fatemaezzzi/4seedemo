@@ -30,6 +30,7 @@ abstract class AppRoutes {
 
   // ── Student ──────────────────────────────────────────────────────────────────
   static const STUDENT_DASHBOARD            = '/student-dashboard';
+  static const STUDENT_QUIZ_START           = '/student-quiz-start'; // ← first-time quiz
   static const STUDENT_PROFILE              = '/student-profile';
   static const STUDENT_PROFILE_TEACHER_VIEW = '/student-profile-teacher-view'; // ← added
   static const STUDENT_SETTINGS             = '/student-settings';

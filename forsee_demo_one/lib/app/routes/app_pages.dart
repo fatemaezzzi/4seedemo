@@ -38,6 +38,7 @@ import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/report_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
 import 'package:forsee_demo_one/model/student_model.dart';
+import 'package:forsee_demo_one/pages/student_quiz_page.dart'; // first-time quiz
 
 // ── Shared pages ──────────────────────────────────────────────────────────────
 import 'package:forsee_demo_one/pages/shared/change_password_page.dart';
@@ -182,6 +183,12 @@ class AppPages {
     GetPage(
       name: AppRoutes.STUDENT_DASHBOARD,
       page: () => const StudentDashboard(),
+      middlewares: [AuthMiddleware(allowed: ['student'])],
+    ),
+    // First-time onboarding quiz — shown once after signup
+    GetPage(
+      name: AppRoutes.STUDENT_QUIZ_START,
+      page: () => const StudentQuizPage(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
     // Student's own profile (no args needed)
