@@ -1,3 +1,13 @@
+// lib/pages/student/student_dashboard.dart
+// ==========================================
+// CHANGES FROM ORIGINAL:
+//   • _checkFirstTime() quiz gate uncommented — now correctly redirects new
+//     students to StudentQuizPage (using Get.toNamed instead of Navigator.push
+//     so it works with your GetX route system and AppRoutes)
+//   • quizCompleted check reads from /users/{uid} exactly as StudentQuizStart
+//     writes it (same key: 'quizCompleted')
+//   • Everything else (UI, Firestore loading, nav bar) unchanged
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -31,22 +41,36 @@ class _StudentDashboardState extends State<StudentDashboard> {
   @override
   void initState() {
     super.initState();
+    // Run quiz gate AFTER the first frame so the dashboard renders first
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstTime());
   }
 
+  /// Checks if the student has completed the mental health quiz.
+  /// If not, redirects them to StudentQuizPage immediately.
+  /// StudentQuizStart writes quizCompleted: true to /users/{uid} on completion,
+  /// so this gate will not fire again on subsequent logins.
   Future<void> _checkFirstTime() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || !mounted) return;
+
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .get();
+
       final quizDone = doc.data()?['quizCompleted'] as bool? ?? false;
+
       if (!quizDone && mounted) {
+        // Use Get.toNamed so the route is in the GetX navigator history
+        // and the back button returns here (not to the login screen).
+        // AppRoutes.STUDENT_QUIZ must be registered in app_pages.dart
         Get.toNamed(AppRoutes.STUDENT_QUIZ_START);
       }
-    } catch (_) {}
+    } catch (e) {
+      // Firestore error — let them continue, quiz will show next login
+      debugPrint('Quiz gate check failed: $e');
+    }
   }
 
   @override
@@ -101,7 +125,7 @@ class _DashboardHomeState extends State<_DashboardHome> {
     }
 
     try {
-      // 1) users/{uid} → name, className, studentId (display), studentDocId
+      // 1) /users/{uid} — name, className, studentId (display), studentDocId
       final userDoc  = await _db.collection('users').doc(uid).get();
       final userData = userDoc.data() ?? {};
 
@@ -112,7 +136,7 @@ class _DashboardHomeState extends State<_DashboardHome> {
       final studentDocId = userData['studentDocId'] as String?;
 
       if (studentDocId != null) {
-        // 2) students/{studentDocId} → G2, teacherRemark
+        // 2) /students/{studentDocId} — G2, teacherRemark
         final studentDoc = await _db.collection('students').doc(studentDocId).get();
         final sData      = studentDoc.data() ?? {};
 
@@ -123,7 +147,7 @@ class _DashboardHomeState extends State<_DashboardHome> {
             ?? sData['teacherRemark']  as String?
             ?? 'No remarks yet.';
 
-        // 3) staging/{studentDocId} → attendance
+        // 3) /staging/{studentDocId} — attendance (saved by teacher)
         final stagingDoc = await _db.collection('staging').doc(studentDocId).get();
         final att        = stagingDoc.data()?['attendance'] as Map<String, dynamic>?;
         _totalDays   = (att?['totalDays']   as num?)?.toInt() ?? 0;
@@ -206,17 +230,10 @@ class _WaveHeader extends StatelessWidget {
         padding: const EdgeInsets.only(left: 24, right: 24, top: 60, bottom: 48),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(name,
-              style: const TextStyle(
-                  color: Color(0xFF2B1F22),
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Pridi')),
+              style: const TextStyle(color: Color(0xFF2B1F22), fontSize: 26, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
           const SizedBox(height: 4),
           Text(subtitle,
-              style: const TextStyle(
-                  color: Color(0xFF2B1F22),
-                  fontSize: 14,
-                  fontFamily: 'Pridi')),
+              style: const TextStyle(color: Color(0xFF2B1F22), fontSize: 14, fontFamily: 'Pridi')),
         ]),
       ),
     );
@@ -228,12 +245,8 @@ class _WaveClipper extends CustomClipper<Path> {
   Path getClip(Size size) {
     final path = Path();
     path.lineTo(0, size.height - 30);
-    path.quadraticBezierTo(
-        size.width * 0.35, size.height + 10,
-        size.width * 0.6,  size.height - 25);
-    path.quadraticBezierTo(
-        size.width * 0.8, size.height - 50,
-        size.width,       size.height - 20);
+    path.quadraticBezierTo(size.width * 0.35, size.height + 10, size.width * 0.6, size.height - 25);
+    path.quadraticBezierTo(size.width * 0.8,  size.height - 50, size.width,       size.height - 20);
     path.lineTo(size.width, 0);
     path.close();
     return path;
@@ -251,11 +264,7 @@ class _InfoTile extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  const _InfoTile({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
+  const _InfoTile({required this.label, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -264,17 +273,9 @@ class _InfoTile extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-            color: const Color(0xFF6B4050),
-            borderRadius: BorderRadius.circular(30)),
+        decoration: BoxDecoration(color: const Color(0xFF6B4050), borderRadius: BorderRadius.circular(30)),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Expanded(
-            child: Text(label,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontFamily: 'Pridi')),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Pridi'))),
           Icon(icon, color: Colors.white70, size: 20),
         ]),
       ),
@@ -295,23 +296,13 @@ class _TeacherRemarksCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-          color: const Color(0xFFA8D0BC),
-          borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Teacher Remarks',
-            style: TextStyle(
-                color: Color(0xFF2B1F22),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Pridi')),
+            style: TextStyle(color: Color(0xFF2B1F22), fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
         const SizedBox(height: 12),
         Text(remark,
-            style: const TextStyle(
-                color: Color(0xFF3B2F2F),
-                fontSize: 13,
-                fontFamily: 'Pridi',
-                height: 1.5)),
+            style: const TextStyle(color: Color(0xFF3B2F2F), fontSize: 13, fontFamily: 'Pridi', height: 1.5)),
       ]),
     );
   }
@@ -332,19 +323,11 @@ class _PerformanceButton extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-            color: const Color(0xFF6B4050),
-            borderRadius: BorderRadius.circular(30)),
-        child: const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('My Performance',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontFamily: 'Pridi')),
-              Icon(Icons.arrow_forward, color: Color(0xFFA8D0BC), size: 20),
-            ]),
+        decoration: BoxDecoration(color: const Color(0xFF6B4050), borderRadius: BorderRadius.circular(30)),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('My Performance', style: TextStyle(color: Colors.white, fontSize: 15, fontFamily: 'Pridi')),
+          Icon(Icons.arrow_forward, color: Color(0xFFA8D0BC), size: 20),
+        ]),
       ),
     );
   }
@@ -379,21 +362,16 @@ class _BottomNav extends StatelessWidget {
             onTap: () => onTap(e.key),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Icon(e.value.$1,
-                  color: selected
-                      ? const Color(0xFF2B1F22)
-                      : Colors.black38,
+                  color: selected ? const Color(0xFF2B1F22) : Colors.black38,
                   size: selected ? 28 : 24),
               const SizedBox(height: 2),
               Text(e.value.$2,
                   style: TextStyle(
-                      color: selected
-                          ? const Color(0xFF2B1F22)
-                          : Colors.black38,
-                      fontSize: 10,
-                      fontFamily: 'Pridi',
-                      fontWeight: selected
-                          ? FontWeight.bold
-                          : FontWeight.normal)),
+                    color: selected ? const Color(0xFF2B1F22) : Colors.black38,
+                    fontSize: 10,
+                    fontFamily: 'Pridi',
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  )),
             ]),
           );
         }).toList(),

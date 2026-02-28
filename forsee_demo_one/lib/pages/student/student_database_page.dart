@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
 import 'package:forsee_demo_one/services/admin_firebase_service.dart';
@@ -21,14 +22,15 @@ class StudentDatabasePage extends StatefulWidget {
 
 class _StudentDatabasePageState extends State<StudentDatabasePage> {
   final TextEditingController _searchController = TextEditingController();
-  String _query = '';
-  bool _filterHighRisk = false;
-  bool _filterMediumRisk = false;
-  bool _filterLowRisk = false;
-  int _navIndex = 2;
+  String _query           = '';
+  bool _filterHighRisk    = false;
+  bool _filterMediumRisk  = false;
+  bool _filterLowRisk     = false;
+  int  _navIndex          = 2;
 
   List<FirestoreStudent> _allStudents = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -37,12 +39,17 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
   }
 
   Future<void> _fetchStudents() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final students = await AdminFirebaseService.fetchAllStudents();
+      debugPrint('[StudentDB] Fetched ${students.length} students total');
+      for (final s in students) {
+        debugPrint('[StudentDB] → id=${s.id}  name=${s.name}  email=${s.email}');
+      }
       if (mounted) setState(() { _allStudents = students; _loading = false; });
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e, stack) {
+      debugPrint('[StudentDB] ERROR: $e\n$stack');
+      if (mounted) setState(() { _error = '$e'; _loading = false; });
     }
   }
 
@@ -50,15 +57,24 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
 
   List<FirestoreStudent> get _filtered {
     return _allStudents.where((s) {
-      final q = _query.toLowerCase();
-      final matchesSearch = q.isEmpty || s.name.toLowerCase().contains(q);
-      final anyRiskFilter = _filterHighRisk || _filterMediumRisk || _filterLowRisk;
-      final matchesRisk = !anyRiskFilter ||
+      final q              = _query.toLowerCase();
+      final matchesSearch  = q.isEmpty ||
+          s.name.toLowerCase().contains(q) ||
+          s.email.toLowerCase().contains(q);
+      final anyRiskFilter  = _filterHighRisk || _filterMediumRisk || _filterLowRisk;
+      final matchesRisk    = !anyRiskFilter ||
           (_filterHighRisk   && s.isHighRisk)   ||
           (_filterMediumRisk && s.isMediumRisk) ||
           (_filterLowRisk    && s.isLowRisk);
       return matchesSearch && matchesRisk;
     }).toList();
+  }
+
+
+  // Auto-detects storage format: fraction (0-1) OR percentage (1-100)
+  String _formatDropout(double v, int decimals) {
+    final pct = v <= 1.0 ? v * 100 : v;
+    return pct.toStringAsFixed(decimals);
   }
 
   // ── DETAIL SHEET ───────────────────────────────────────────────────────────
@@ -81,8 +97,12 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
           child: ListView(
             controller: controller,
             children: [
-              Center(child: Container(width: 40, height: 4,
-                  decoration: BoxDecoration(color: _petalPink.withOpacity(0.4), borderRadius: BorderRadius.circular(2)))),
+              Center(child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: _petalPink.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2)),
+              )),
               const SizedBox(height: 20),
 
               // Header
@@ -90,8 +110,18 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
                 _avatar(s, radius: 36),
                 const SizedBox(width: 16),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(s.name, style: const TextStyle(color: _blush, fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-                  Text('Age: ${s.age}', style: TextStyle(color: _pastel.withOpacity(0.6), fontSize: 13)),
+                  Text(s.name,
+                      style: const TextStyle(
+                          color: _blush, fontSize: 22,
+                          fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                  if (s.email.isNotEmpty)
+                    Text(s.email,
+                        style: TextStyle(
+                            color: _pastel.withOpacity(0.6), fontSize: 12)),
+                  if (s.age > 0)
+                    Text('Age: ${s.age}',
+                        style: TextStyle(
+                            color: _pastel.withOpacity(0.5), fontSize: 12)),
                   const SizedBox(height: 6),
                   _riskBadge(s.riskLevel),
                 ])),
@@ -105,14 +135,16 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
                 _detailRow('G1 Score',  '${s.g1}/20'),
                 _detailRow('G2 Score',  '${s.g2}/20'),
                 _detailRow('Avg Score', '${s.avgScore.toStringAsFixed(0)}%'),
-                _detailRow('Studytime', '${s.studytime} hrs/week'),
+                _detailRow('Study time', '${s.studytime} hrs/week'),
                 _detailRow('Failures',  '${s.failures}'),
               ]),
               const SizedBox(height: 14),
 
               _detailSection('Attendance & Behaviour', [
-                _detailRow('Absences', '${s.absences} days', valueColor: s.absences > 15 ? Colors.redAccent : _blush),
-                _detailRow('Status',   s.attendanceLabel,    valueColor: s.absences > 15 ? Colors.redAccent : Colors.greenAccent),
+                _detailRow('Absences', '${s.absences} days',
+                    valueColor: s.absences > 15 ? Colors.redAccent : _blush),
+                _detailRow('Status', s.attendanceLabel,
+                    valueColor: s.absences > 15 ? Colors.redAccent : Colors.greenAccent),
                 _detailRow('Health',   '${s.health}/5'),
                 _detailRow('Dalc (workday alcohol)', '${s.dalc}/5'),
                 _detailRow('Walc (weekend alcohol)', '${s.walc}/5'),
@@ -120,27 +152,37 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
               const SizedBox(height: 14),
 
               _detailSection('AI Risk Prediction', [
-                _detailRow('Risk Level',    s.riskLevel,  valueColor: _riskColor(s.riskLevel)),
+                _detailRow('Risk Level',    s.riskLevel,
+                    valueColor: _riskColor(s.riskLevel)),
                 _detailRow('Risk Score',    s.riskScore.toStringAsFixed(2)),
-                _detailRow('Dropout Prob.', '${(s.dropoutProbability * 100).toStringAsFixed(1)}%'),
+                _detailRow('Dropout Prob.', '${_formatDropout(s.dropoutProbability, 1)}%'),
                 _detailRow('Confidence',    s.confidence),
               ]),
 
               if (s.riskFactors.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const Text('Risk Factors:', style: TextStyle(color: _teal, fontFamily: 'Pridi', fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text('Risk Factors:',
+                    style: TextStyle(
+                        color: _teal, fontFamily: 'Pridi',
+                        fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: _petalPink.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(
+                      color: _petalPink.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: s.riskFactors.map((f) => Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(children: [
-                        const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 14),
+                        const Icon(Icons.warning_amber_rounded,
+                            color: Colors.orangeAccent, size: 14),
                         const SizedBox(width: 8),
-                        Expanded(child: Text(f, style: TextStyle(color: _pastel.withOpacity(0.8), fontSize: 13, fontFamily: 'Pridi'))),
+                        Expanded(child: Text(f,
+                            style: TextStyle(
+                                color: _pastel.withOpacity(0.8),
+                                fontSize: 13, fontFamily: 'Pridi'))),
                       ]),
                     )).toList(),
                   ),
@@ -149,12 +191,20 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
 
               if (s.recommendation.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const Text('Recommendation:', style: TextStyle(color: _teal, fontFamily: 'Pridi', fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text('Recommendation:',
+                    style: TextStyle(
+                        color: _teal, fontFamily: 'Pridi',
+                        fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: _petalPink.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
-                  child: Text(s.recommendation, style: TextStyle(color: _pastel.withOpacity(0.8), fontSize: 13, fontFamily: 'Pridi')),
+                  decoration: BoxDecoration(
+                      color: _petalPink.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14)),
+                  child: Text(s.recommendation,
+                      style: TextStyle(
+                          color: _pastel.withOpacity(0.8),
+                          fontSize: 13, fontFamily: 'Pridi')),
                 ),
               ],
 
@@ -166,9 +216,12 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _petalPink,
                     foregroundColor: _blush,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
-                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                  child: const Text('Close',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
                 ),
               ),
             ],
@@ -186,7 +239,11 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
       backgroundColor: _petalPink.withOpacity(0.25),
       child: Text(
         s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
-        style: TextStyle(color: _pastel, fontSize: radius * 0.8, fontWeight: FontWeight.bold, fontFamily: 'Pridi'),
+        style: TextStyle(
+            color: _pastel,
+            fontSize: radius * 0.8,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Pridi'),
       ),
     );
   }
@@ -196,8 +253,13 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
     if (level.toUpperCase() == 'UNKNOWN') return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.6))),
-      child: Text(level.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.6))),
+      child: Text(level.toUpperCase(),
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -212,11 +274,16 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
 
   Widget _detailSection(String title, List<Widget> rows) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(color: _teal, fontFamily: 'Pridi', fontWeight: FontWeight.bold, fontSize: 13)),
+      Text(title,
+          style: const TextStyle(
+              color: _teal, fontFamily: 'Pridi',
+              fontWeight: FontWeight.bold, fontSize: 13)),
       const SizedBox(height: 8),
       Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: _petalPink.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(
+            color: _petalPink.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(14)),
         child: Column(children: rows),
       ),
     ]);
@@ -226,8 +293,16 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: TextStyle(color: _pastel.withOpacity(0.6), fontSize: 13, fontFamily: 'Pridi')),
-        Text(value, style: TextStyle(color: valueColor ?? _blush, fontSize: 13, fontWeight: FontWeight.w600, fontFamily: 'Pridi')),
+        Text(label,
+            style: TextStyle(
+                color: _pastel.withOpacity(0.6),
+                fontSize: 13, fontFamily: 'Pridi')),
+        Text(value,
+            style: TextStyle(
+                color: valueColor ?? _blush,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pridi')),
       ]),
     );
   }
@@ -241,7 +316,9 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
         decoration: BoxDecoration(
           color: active ? _petalPink : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: active ? _petalPink : _pastel.withOpacity(0.4), width: 1.2),
+          border: Border.all(
+              color: active ? _petalPink : _pastel.withOpacity(0.4),
+              width: 1.2),
         ),
         child: Text(label,
             style: TextStyle(
@@ -266,48 +343,78 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _petalPink.withOpacity(0.2), width: 1),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _avatar(s),
-              const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s.name, style: const TextStyle(color: _blush, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-                Text('Age ${s.age}  ·  ${s.failures} failure${s.failures == 1 ? '' : 's'}',
-                    style: TextStyle(color: _pastel.withOpacity(0.55), fontSize: 12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _avatar(s),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.name,
+                    style: const TextStyle(
+                        color: _blush, fontSize: 16,
+                        fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                Text(
+                  s.age > 0
+                      ? 'Age ${s.age}  ·  ${s.failures} failure${s.failures == 1 ? '' : 's'}'
+                      : s.email.isNotEmpty ? s.email : 'Registered student',
+                  style: TextStyle(
+                      color: _pastel.withOpacity(0.55), fontSize: 12),
+                ),
                 const SizedBox(height: 4),
                 _riskBadge(s.riskLevel),
-              ])),
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                const Icon(Icons.chevron_right, color: _petalPink, size: 20),
-                const SizedBox(height: 4),
-                Text('${(s.dropoutProbability * 100).toStringAsFixed(0)}% dropout',
-                    style: TextStyle(color: riskColor, fontSize: 10, fontFamily: 'Pridi')),
-              ]),
+              ],
+            )),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Icon(Icons.chevron_right, color: _petalPink, size: 20),
+              const SizedBox(height: 4),
+              if (s.dropoutProbability > 0)
+                Text(
+                  '${_formatDropout(s.dropoutProbability, 0)}% dropout',
+                  style: TextStyle(
+                      color: riskColor, fontSize: 10, fontFamily: 'Pridi'),
+                ),
             ]),
+          ]),
+
+          // Only show stats row if there's meaningful academic data
+          if (s.g1 > 0 || s.g2 > 0 || s.absences > 0) ...[
             const SizedBox(height: 12),
             Divider(color: _petalPink.withOpacity(0.2), height: 1),
             const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              _statPill('Absences', '${s.absences} days', s.absences > 15 ? Colors.redAccent : Colors.greenAccent,
+              _statPill('Absences', '${s.absences} days',
+                  s.absences > 15 ? Colors.redAccent : Colors.greenAccent,
                   showDot: s.absences > 15),
-              _statPill('Avg Score', '${s.avgScore.toStringAsFixed(0)}%', _pastel),
+              _statPill('Avg Score',
+                  '${s.avgScore.toStringAsFixed(0)}%', _pastel),
               _statPill('G1 / G2', '${s.g1} / ${s.g2}', _pastel),
             ]),
           ],
-        ),
+        ]),
       ),
     );
   }
 
-  Widget _statPill(String label, String value, Color valueColor, {bool showDot = false}) {
+  Widget _statPill(String label, String value, Color valueColor,
+      {bool showDot = false}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('$label:', style: TextStyle(color: _pastel.withOpacity(0.45), fontSize: 10, fontFamily: 'Pridi')),
+      Text('$label:',
+          style: TextStyle(
+              color: _pastel.withOpacity(0.45),
+              fontSize: 10, fontFamily: 'Pridi')),
       const SizedBox(height: 2),
       Row(children: [
-        Text(value, style: TextStyle(color: valueColor, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Pridi')),
-        if (showDot) ...[const SizedBox(width: 4), const CircleAvatar(radius: 4, backgroundColor: Colors.redAccent)],
+        Text(value,
+            style: TextStyle(
+                color: valueColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pridi')),
+        if (showDot) ...[
+          const SizedBox(width: 4),
+          const CircleAvatar(radius: 4, backgroundColor: Colors.redAccent),
+        ],
       ]),
     ]);
   }
@@ -329,15 +436,26 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    const Text('Student Database',
-                        style: TextStyle(color: _pastel, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: _pastel),
-                      onPressed: _fetchStudents,
-                    ),
-                  ]),
-                  Text('AI-powered risk data', style: TextStyle(color: _pastel.withOpacity(0.7), fontSize: 14, fontFamily: 'Pridi')),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Student Database',
+                          style: TextStyle(
+                              color: _pastel,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Pridi')),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: _pastel),
+                        onPressed: _fetchStudents,
+                      ),
+                    ],
+                  ),
+                  Text('AI-powered risk data',
+                      style: TextStyle(
+                          color: _pastel.withOpacity(0.7),
+                          fontSize: 14,
+                          fontFamily: 'Pridi')),
                   const SizedBox(height: 16),
 
                   // Search bar
@@ -350,21 +468,37 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
                     child: Row(children: [
                       Padding(
                         padding: const EdgeInsets.only(left: 14),
-                        child: Icon(Icons.search, color: _pastel.withOpacity(0.5), size: 20),
+                        child: Icon(Icons.search,
+                            color: _pastel.withOpacity(0.5), size: 20),
                       ),
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          style: TextStyle(color: _blush, fontFamily: 'Pridi', fontSize: 14),
+                          style: TextStyle(
+                              color: _blush,
+                              fontFamily: 'Pridi',
+                              fontSize: 14),
                           decoration: InputDecoration(
-                            hintText: 'Search by name…',
-                            hintStyle: TextStyle(color: _pastel.withOpacity(0.35), fontSize: 14),
+                            hintText: 'Search by name or email…',
+                            hintStyle: TextStyle(
+                                color: _pastel.withOpacity(0.35),
+                                fontSize: 14),
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 12),
                           ),
                           onChanged: (v) => setState(() => _query = v),
                         ),
                       ),
+                      if (_query.isNotEmpty)
+                        IconButton(
+                          icon: Icon(Icons.close,
+                              color: _pastel.withOpacity(0.6), size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                        ),
                     ]),
                   ),
 
@@ -372,9 +506,15 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
 
                   // Filter chips
                   Wrap(spacing: 8, children: [
-                    _filterChip('High Risk',   _filterHighRisk,   () => setState(() => _filterHighRisk   = !_filterHighRisk)),
-                    _filterChip('Medium Risk', _filterMediumRisk, () => setState(() => _filterMediumRisk = !_filterMediumRisk)),
-                    _filterChip('Low Risk',    _filterLowRisk,    () => setState(() => _filterLowRisk    = !_filterLowRisk)),
+                    _filterChip(
+                        'High Risk', _filterHighRisk,
+                            () => setState(() => _filterHighRisk = !_filterHighRisk)),
+                    _filterChip(
+                        'Medium Risk', _filterMediumRisk,
+                            () => setState(() => _filterMediumRisk = !_filterMediumRisk)),
+                    _filterChip(
+                        'Low Risk', _filterLowRisk,
+                            () => setState(() => _filterLowRisk = !_filterLowRisk)),
                   ]),
                   const SizedBox(height: 4),
                 ],
@@ -384,16 +524,54 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Text(
-                _loading ? 'Loading…' : '${results.length} student${results.length == 1 ? '' : 's'} found',
-                style: TextStyle(color: _pastel.withOpacity(0.45), fontSize: 12, fontFamily: 'Pridi'),
+                _loading
+                    ? 'Loading…'
+                    : _error != null
+                    ? _error!
+                    : '${results.length} student${results.length == 1 ? '' : 's'} found',
+                style: TextStyle(
+                    color: _error != null
+                        ? Colors.redAccent
+                        : _pastel.withOpacity(0.45),
+                    fontSize: 12,
+                    fontFamily: 'Pridi'),
               ),
             ),
 
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: _petalPink))
+                  ? const Center(
+                  child: CircularProgressIndicator(color: _petalPink))
+                  : _error != null
+                  ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: Colors.redAccent, size: 48),
+                      const SizedBox(height: 12),
+                      Text(_error!,
+                          style: TextStyle(
+                              color: _pastel.withOpacity(0.7),
+                              fontFamily: 'Pridi'),
+                          textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchStudents,
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: _petalPink),
+                        child: const Text('Retry',
+                            style: TextStyle(
+                                color: _blush, fontFamily: 'Pridi')),
+                      ),
+                    ],
+                  ))
                   : results.isEmpty
-                  ? Center(child: Text('No students match.', style: TextStyle(color: _pastel.withOpacity(0.45), fontFamily: 'Pridi')))
+                  ? Center(
+                  child: Text('No students match.',
+                      style: TextStyle(
+                          color: _pastel.withOpacity(0.45),
+                          fontFamily: 'Pridi')))
                   : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: results.length,
@@ -416,7 +594,9 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
     ];
 
     return Container(
-      decoration: BoxDecoration(color: _dark, border: Border(top: BorderSide(color: _petalPink.withOpacity(0.2)))),
+      decoration: BoxDecoration(
+          color: _dark,
+          border: Border(top: BorderSide(color: _petalPink.withOpacity(0.2)))),
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -425,16 +605,28 @@ class _StudentDatabasePageState extends State<StudentDatabasePage> {
           return GestureDetector(
             onTap: () {
               if (e.key == 0) { Navigator.pop(context); return; }
-              if (e.key == 1) { Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const TeacherAnalysisPage())); return; }
+              if (e.key == 1) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const TeacherAnalysisPage()),
+                );
+                return;
+              }
               setState(() => _navIndex = e.key);
             },
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(e.value.$1, color: active ? _teal : _pastel.withOpacity(0.4), size: active ? 26 : 22),
-              const SizedBox(height: 2),
-              Text(e.value.$2, style: TextStyle(
+              Icon(e.value.$1,
                   color: active ? _teal : _pastel.withOpacity(0.4),
-                  fontSize: 10, fontFamily: 'Pridi',
-                  fontWeight: active ? FontWeight.bold : FontWeight.normal)),
+                  size: active ? 26 : 22),
+              const SizedBox(height: 2),
+              Text(e.value.$2,
+                  style: TextStyle(
+                    color: active ? _teal : _pastel.withOpacity(0.4),
+                    fontSize: 10,
+                    fontFamily: 'Pridi',
+                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                  )),
             ]),
           );
         }).toList(),

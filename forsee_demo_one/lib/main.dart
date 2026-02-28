@@ -13,6 +13,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+
   // Register AuthController globally before app starts.
   // permanent: true → never destroyed while app is alive.
   Get.put(AuthController(), permanent: true);

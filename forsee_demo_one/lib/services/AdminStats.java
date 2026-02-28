@@ -19,6 +19,10 @@ class AdminStats {
     required this.lowRiskCount,
     required this.noRiskCount,
   });
+
+  /// Convenience: percentage of students at some risk level
+  double riskPercent(int count) =>
+      totalStudents == 0 ? 0 : (count / totalStudents * 100);
 }
 
 class AdminProfile {
@@ -39,10 +43,10 @@ class AdminProfile {
   factory AdminProfile.fromMap(Map<String, dynamic> d, String uid) {
     return AdminProfile(
       uid:      uid,
-      name:     (d['name']     as String?) ?? 'Admin',
-      email:    (d['email']    as String?) ?? '',
-      schoolId: (d['schoolId'] as String?) ?? '',
-      role:     (d['role']     as String?) ?? 'admin',
+      name:     d['name']     as String? ?? 'Admin',
+      email:    d['email']    as String? ?? '',
+      schoolId: d['schoolId'] as String? ?? '',
+      role:     d['role']     as String? ?? 'admin',
     );
   }
 }
@@ -50,28 +54,27 @@ class AdminProfile {
 class FirestoreStudent {
   final String id;
   final String name;
+  final int age;
+  final int absences;
+  final int failures;
+  final int g1;
+  final int g2;
+  final int studytime;
+  final int health;
+  final int dalc;
+  final int walc;
   final String email;
-  final int    age;
-  final int    absences;
-  final int    failures;
-  final int    g1;
-  final int    g2;
-  final int    studytime;
-  final int    health;
-  final int    dalc;
-  final int    walc;
   // joined from predictions
-  final String       riskLevel;
-  final double       riskScore;
-  final double       dropoutProbability;
-  final String       recommendation;
+  final String riskLevel;
+  final double riskScore;
+  final double dropoutProbability;
+  final String recommendation;
   final List<String> riskFactors;
-  final String       confidence;
+  final String confidence;
 
   const FirestoreStudent({
     required this.id,
     required this.name,
-    required this.email,
     required this.age,
     required this.absences,
     required this.failures,
@@ -81,6 +84,7 @@ class FirestoreStudent {
     required this.health,
     required this.dalc,
     required this.walc,
+    required this.email,
     required this.riskLevel,
     required this.riskScore,
     required this.dropoutProbability,
@@ -94,7 +98,7 @@ class FirestoreStudent {
 
   String get attendanceLabel {
     if (absences > 15) return 'Low';
-    if (absences > 8)  return 'Medium';
+    if (absences > 8) return 'Medium';
     return 'Good';
   }
 
@@ -119,9 +123,9 @@ class FirestoreTeacher {
 
 class ClassroomRiskData {
   final String classroomId;
-  final int    totalStudents;
-  final int    highRiskCount;
-  final int    mediumRiskCount;
+  final int totalStudents;
+  final int highRiskCount;
+  final int mediumRiskCount;
 
   const ClassroomRiskData({
     required this.classroomId,
@@ -137,74 +141,6 @@ class AdminFirebaseService {
   static final _db   = FirebaseFirestore.instance;
   static final _auth = FirebaseAuth.instance;
 
-  // ── INTERNAL BUILDER (static — not a local function) ──────────────────────
-  //
-  // Dart allows local functions in async bodies syntactically, but they can
-  // capture variables incorrectly in certain analysis modes. Using a private
-  // static method avoids this entirely and is cleaner.
-
-  // Safe string helper — never throws, works for any Firestore type
-  static String _str(dynamic v, [String fallback = '']) {
-    if (v == null) return fallback;
-    if (v is String) return v;
-    return v.toString();
-  }
-
-  // Safe int helper
-  static int _int(dynamic v, [int fallback = 0]) {
-    if (v == null) return fallback;
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v) ?? fallback;
-    return fallback;
-  }
-
-  // Safe double helper
-  static double _dbl(dynamic v, [double fallback = 0.0]) {
-    if (v == null) return fallback;
-    if (v is double) return v;
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v) ?? fallback;
-    return fallback;
-  }
-
-  static FirestoreStudent _buildStudent({
-    required String id,
-    required String name,
-    required String email,
-    required Map<String, dynamic> academic,
-    required Map<String, Map<String, dynamic>> predMap,
-  }) {
-    final pred = predMap[id] ?? {};
-
-    // Safe list — never throws even if stored as wrong type
-    final riskFactorsRaw = pred['risk_factors'];
-    final List<String> riskFactors = (riskFactorsRaw is List)
-        ? riskFactorsRaw.map((e) => e.toString()).toList()
-        : [];
-
-    return FirestoreStudent(
-      id:                 id,
-      name:               name.isNotEmpty ? name : 'Unknown',
-      email:              email,
-      age:                _int(academic['age']),
-      absences:           _int(academic['absences']),
-      failures:           _int(academic['failures']),
-      g1:                 _int(academic['G1']),
-      g2:                 _int(academic['G2']),
-      studytime:          _int(academic['studytime']),
-      health:             _int(academic['health']),
-      dalc:               _int(academic['Dalc']),
-      walc:               _int(academic['Walc']),
-      riskLevel:          _str(pred['risk_level'],          'UNKNOWN'),
-      riskScore:          _dbl(pred['risk_score']),
-      dropoutProbability: _dbl(pred['dropout_probability']),
-      recommendation:     _str(pred['recommendation']),
-      riskFactors:        riskFactors,
-      confidence:         _str(pred['confidence']),
-    );
-  }
-
   // ── CURRENT ADMIN PROFILE ─────────────────────────────────────────────────
 
   static Future<AdminProfile?> fetchCurrentAdmin() async {
@@ -212,7 +148,7 @@ class AdminFirebaseService {
     if (user == null) return null;
     try {
       final doc = await _db.collection('users').doc(user.uid).get();
-      if (!doc.exists || doc.data() == null) return null;
+      if (!doc.exists) return null;
       return AdminProfile.fromMap(doc.data()!, user.uid);
     } catch (_) {
       return null;
@@ -226,10 +162,9 @@ class AdminFirebaseService {
         .collection('users')
         .doc(user.uid)
         .snapshots()
-        .map((doc) =>
-    (doc.exists && doc.data() != null)
-        ? AdminProfile.fromMap(doc.data()!, user.uid)
-        : null);
+        .map((doc) => doc.exists
+            ? AdminProfile.fromMap(doc.data()!, user.uid)
+            : null);
   }
 
   // ── TEACHERS ──────────────────────────────────────────────────────────────
@@ -243,32 +178,40 @@ class AdminFirebaseService {
       final d = doc.data();
       return FirestoreTeacher(
         id:       doc.id,
-        name:     (d['name']     as String?) ?? '',
-        email:    (d['email']    as String?) ?? '',
-        schoolId: (d['schoolId'] as String?) ?? '',
+        name:     d['name']     as String? ?? '',
+        email:    d['email']    as String? ?? '',
+        schoolId: d['schoolId'] as String? ?? '',
       );
     }).toList());
   }
 
-  // ── STUDENTS ──────────────────────────────────────────────────────────────
+  // ── STUDENTS (merged: students collection + users with role=student) ───────
   //
-  // ONLY reads from `users` where role == 'student'.
-  // The `students` collection is intentionally ignored — it contains
-  // seeded/hardcoded data that should not appear in the admin view.
-  // Only real signed-up users are shown.
+  // Strategy:
+  //   1. Fetch all docs from `students` collection (contains academic data).
+  //   2. Fetch all docs from `users` where role == 'student' (auth-registered).
+  //   3. Merge by uid: if a user-doc uid matches a student-doc id, they are the
+  //      same person. Otherwise surface the user as a student with zero academic
+  //      data so they are still visible in the DB.
+  //   4. Join with latest prediction from `predictions` collection.
 
   static Future<List<FirestoreStudent>> fetchAllStudents() async {
-    final QuerySnapshot<Map<String, dynamic>> userStudentSnap =
-    await _db.collection('users').where('role', isEqualTo: 'student').get();
+    // Parallel fetch for speed
+    final results = await Future.wait([
+      _db.collection('students').get(),
+      _db.collection('users').where('role', isEqualTo: 'student').get(),
+      _db.collection('predictions').get(),
+    ]);
 
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
+    final studentSnap     = results[0];
+    final userStudentSnap = results[1];
+    final predSnap        = results[2];
 
-    // ── Build prediction map: studentId → latest prediction doc ─────────
+    // Build prediction map: studentId -> latest prediction data
     final Map<String, Map<String, dynamic>> predMap = {};
     for (final doc in predSnap.docs) {
       final d   = doc.data();
-      final sid = (d['studentId'] as String?) ?? '';
+      final sid = d['studentId'] as String? ?? '';
       if (sid.isEmpty) continue;
       final existing = predMap[sid];
       if (existing == null) {
@@ -276,44 +219,100 @@ class AdminFirebaseService {
       } else {
         final existTs = existing['timestamp'] as Timestamp?;
         final curTs   = d['timestamp']        as Timestamp?;
-        if (curTs != null && existTs != null &&
-            curTs.compareTo(existTs) > 0) {
+        if (curTs != null && existTs != null && curTs.compareTo(existTs) > 0) {
           predMap[sid] = d;
         }
       }
     }
 
-    // ── Only real signed-up students from the users collection ───────────
-    final List<FirestoreStudent> result = [];
+    // Build a map from the students collection
+    final Map<String, Map<String, dynamic>> studentDataMap = {};
+    for (final doc in studentSnap.docs) {
+      studentDataMap[doc.id] = doc.data();
+    }
+
+    // Build a set of student-doc IDs so we don't double-add
+    final Set<String> usedIds = {};
+    final List<FirestoreStudent> out = [];
+
+    // Helper to build a FirestoreStudent from merged data
+    FirestoreStudent _build(String id, Map<String, dynamic> d, String email) {
+      final pred          = predMap[id] ?? {};
+      final riskFactorsRaw = pred['risk_factors'] as List<dynamic>? ?? [];
+      return FirestoreStudent(
+        id:                 id,
+        name:               d['name']       as String? ?? 'Unknown',
+        age:                (d['age']        as num?)?.toInt() ?? 0,
+        absences:           (d['absences']   as num?)?.toInt() ?? 0,
+        failures:           (d['failures']   as num?)?.toInt() ?? 0,
+        g1:                 (d['G1']         as num?)?.toInt() ?? 0,
+        g2:                 (d['G2']         as num?)?.toInt() ?? 0,
+        studytime:          (d['studytime']  as num?)?.toInt() ?? 0,
+        health:             (d['health']     as num?)?.toInt() ?? 0,
+        dalc:               (d['Dalc']       as num?)?.toInt() ?? 0,
+        walc:               (d['Walc']       as num?)?.toInt() ?? 0,
+        email:              email,
+        riskLevel:          pred['risk_level']            as String? ?? 'UNKNOWN',
+        riskScore:          (pred['risk_score']            as num?)?.toDouble() ?? 0.0,
+        dropoutProbability: (pred['dropout_probability']   as num?)?.toDouble() ?? 0.0,
+        recommendation:     pred['recommendation']         as String? ?? '',
+        riskFactors:        riskFactorsRaw.map((e) => e.toString()).toList(),
+        confidence:         pred['confidence']             as String? ?? '',
+      );
+    }
+
+    // 1) Process users with role=student — these are auth-registered students
     for (final doc in userStudentSnap.docs) {
-      final d = doc.data();
-      result.add(_buildStudent(
-        id:       doc.id,
-        name:     (d['name']  as String?) ?? '',
-        email:    (d['email'] as String?) ?? '',
-        academic: d,
-        predMap:  predMap,
+      usedIds.add(doc.id);
+      final userData = doc.data();
+      // Merge with academic data from students collection if it exists
+      final academicData = studentDataMap[doc.id] ?? {};
+      final merged = {
+        'name':      userData['name'],
+        'age':       academicData['age']      ?? userData['age'],
+        'absences':  academicData['absences'],
+        'failures':  academicData['failures'],
+        'G1':        academicData['G1'],
+        'G2':        academicData['G2'],
+        'studytime': academicData['studytime'],
+        'health':    academicData['health'],
+        'Dalc':      academicData['Dalc'],
+        'Walc':      academicData['Walc'],
+      };
+      out.add(_build(
+        doc.id,
+        merged,
+        userData['email'] as String? ?? '',
       ));
     }
 
-    return result;
+    // 2) Process students collection entries that weren't in users
+    for (final doc in studentSnap.docs) {
+      if (usedIds.contains(doc.id)) continue; // already added above
+      out.add(_build(doc.id, doc.data(), ''));
+    }
+
+    return out;
   }
 
   // ── CLASSROOMS ────────────────────────────────────────────────────────────
 
   static Future<List<ClassroomRiskData>> fetchClassroomRiskData() async {
-    final QuerySnapshot<Map<String, dynamic>> classSnap =
-    await _db.collection('classrooms').get();
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
+    final results = await Future.wait([
+      _db.collection('classrooms').get(),
+      _db.collection('predictions').get(),
+    ]);
+
+    final classSnap = results[0];
+    final predSnap  = results[1];
 
     final Map<String, String> latestRiskPerStudent = {};
     for (final doc in predSnap.docs) {
       final d   = doc.data();
-      final sid = (d['studentId'] as String?) ?? '';
+      final sid = d['studentId'] as String? ?? '';
       if (sid.isEmpty) continue;
       if (!latestRiskPerStudent.containsKey(sid)) {
-        latestRiskPerStudent[sid] = (d['risk_level'] as String?) ?? 'UNKNOWN';
+        latestRiskPerStudent[sid] = d['risk_level'] as String? ?? 'UNKNOWN';
       }
     }
 
@@ -336,20 +335,26 @@ class AdminFirebaseService {
   }
 
   // ── ADMIN STATS ───────────────────────────────────────────────────────────
+  //
+  // Student count comes from BOTH sources (union) so newly registered students
+  // appear in the count even before an ML prediction exists.
 
   static Future<AdminStats> fetchAdminStats() async {
-    final QuerySnapshot<Map<String, dynamic>> teachersSnap =
-    await _db.collection('users').where('role', isEqualTo: 'teacher').get();
+    final results = await Future.wait([
+      _db.collection('users').where('role', isEqualTo: 'teacher').get(),
+      _db.collection('students').get(),
+      _db.collection('users').where('role', isEqualTo: 'student').get(),
+      _db.collection('predictions').get(),
+    ]);
 
-    // Only count real signed-up students — not seeded students collection
-    final QuerySnapshot<Map<String, dynamic>> usersStudentSnap =
-    await _db.collection('users').where('role', isEqualTo: 'student').get();
+    final teachersSnap      = results[0];
+    final studentsCollSnap  = results[1];
+    final usersStudentSnap  = results[2];
+    final predSnap          = results[3];
 
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
-
-    // Only real auth-registered students
+    // Union of student IDs
     final Set<String> allStudentIds = {
+      ...studentsCollSnap.docs.map((d) => d.id),
       ...usersStudentSnap.docs.map((d) => d.id),
     };
 
@@ -357,16 +362,17 @@ class AdminFirebaseService {
     final Map<String, String> latestRisk = {};
     for (final doc in predSnap.docs) {
       final d   = doc.data();
-      final sid = (d['studentId'] as String?) ?? '';
+      final sid = d['studentId'] as String? ?? '';
       if (sid.isEmpty) continue;
       if (!latestRisk.containsKey(sid)) {
-        latestRisk[sid] = (d['risk_level'] as String?) ?? 'UNKNOWN';
+        latestRisk[sid] = d['risk_level'] as String? ?? 'UNKNOWN';
       }
     }
 
     int high = 0, medium = 0, low = 0, none = 0;
     for (final sid in allStudentIds) {
-      switch ((latestRisk[sid] ?? 'NONE').toUpperCase()) {
+      final level = (latestRisk[sid] ?? 'NONE').toUpperCase();
+      switch (level) {
         case 'HIGH':   high++;   break;
         case 'MEDIUM': medium++; break;
         case 'LOW':    low++;    break;
@@ -384,7 +390,7 @@ class AdminFirebaseService {
     );
   }
 
-  // ── RECENT PREDICTIONS (live activity log) ────────────────────────────────
+  // ── RECENT PREDICTIONS (activity log) ────────────────────────────────────
 
   static Stream<List<Map<String, dynamic>>> streamRecentPredictions({
     int limit = 10,
