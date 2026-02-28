@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../quiz_data.dart';
 import 'quiz_result_page.dart';
@@ -16,7 +18,7 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
   late final QuizCategory _category;
 
   int _currentIndex = 0;
-  int? _selectedOptionIndex;              // index of tapped button (for UI highlight)
+  int? _selectedOptionIndex;
   final List<QuizResponse> _responses = [];
 
   @override
@@ -37,7 +39,6 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
   void _goNext() {
     if (_selectedOptionIndex == null) return;
 
-    // Use actual score value (not index) for weighted scoring
     final actualScore = _options[_selectedOptionIndex!].value;
 
     _responses.add(QuizResponse(
@@ -51,12 +52,16 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
         _selectedOptionIndex = null;
       });
     } else {
+      // ── Get the logged-in student's Firestore UID from AuthController ────
+      final studentId = AuthController.to.firebaseUser.value?.uid ?? '';
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => QuizResultPage(
-            category: _category,
+            category:  _category,
             responses: _responses,
+            studentId: studentId, // ✅ passed here
           ),
         ),
       );
@@ -141,7 +146,6 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Critical badge
                   if (_current.isCritical)
                     Container(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -255,10 +259,6 @@ class _StudentQuizStartState extends State<StudentQuizStart> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Option Button — shows numeric value + label (matches HTML design)
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _OptionButton extends StatelessWidget {
   final String label;
   final int value;
@@ -286,7 +286,6 @@ class _OptionButton extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Value badge
             Container(
               width: 28,
               height: 28,
@@ -324,10 +323,6 @@ class _OptionButton extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Wave Clipper
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _WaveClipper extends CustomClipper<Path> {
   @override
