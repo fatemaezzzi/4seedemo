@@ -6,8 +6,10 @@ import 'profile_subpages/student/teacher_remarks_page.dart';
 import 'profile_subpages/student/contact_teacher_page.dart';
 import 'profile_subpages/shared/edit_personal_info_page.dart';
 
+
 class StudentProfilePage extends StatelessWidget {
   const StudentProfilePage({super.key});
+
 
   @override
   Widget build(BuildContext context) {
@@ -27,12 +29,14 @@ class StudentProfilePage extends StatelessWidget {
           children: [
             const SizedBox(height: 16),
 
+
             // Avatar
             const CircleAvatar(
               radius: 52,
               backgroundColor: Color(0xFFB8C8D0),
             ),
             const SizedBox(height: 14),
+
 
             // Name & Class
             const Text(
@@ -46,6 +50,7 @@ class StudentProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
+
             // Mental Health Quiz Button
             _ActionButton(
               label: 'Mental Health Quiz',
@@ -54,9 +59,11 @@ class StudentProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+
             // Attendance Card
             _AttendanceCard(percentage: 76),
             const SizedBox(height: 16),
+
 
             // Personal Details Card
             _PersonalDetailsCard(
@@ -70,6 +77,7 @@ class StudentProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+
             // Teacher Remarks Button
             _ActionButton(
               label: 'Teacher Remarks',
@@ -77,6 +85,7 @@ class StudentProfilePage extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const TeacherRemarksPage())),
             ),
             const SizedBox(height: 12),
+
 
             // Contact Teacher Button
             _ActionButton(
@@ -86,6 +95,7 @@ class StudentProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+
             // Edit Personal Info Button
             _ActionButton(
               label: 'Edit Personal Information',
@@ -93,6 +103,7 @@ class StudentProfilePage extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const EditPersonalInfoPage(role: UserRole.student))),
             ),
             const SizedBox(height: 12),
+
 
             // Logout Button
             _OutlineButton(
@@ -103,18 +114,23 @@ class StudentProfilePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const _BottomNavBar(),
+
+
     );
   }
 }
 
+
 // ─── Shared Widgets ─────────────────────────────────────────
+
 
 class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
+
   const _ActionButton({required this.label, required this.onTap});
+
 
   @override
   Widget build(BuildContext context) {
@@ -138,11 +154,14 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+
 class _OutlineButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
+
   const _OutlineButton({required this.label, required this.onTap});
+
 
   @override
   Widget build(BuildContext context) {
@@ -165,15 +184,18 @@ class _OutlineButton extends StatelessWidget {
   }
 }
 
+
 class _AttendanceCard extends StatelessWidget {
   final int percentage;
   const _AttendanceCard({required this.percentage});
+
 
   Color get _barColor {
     if (percentage >= 85) return Colors.green.shade400;
     if (percentage >= 75) return Colors.orange.shade400;
     return Colors.red.shade400;
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -229,9 +251,11 @@ class _AttendanceCard extends StatelessWidget {
   }
 }
 
+
 class _PersonalDetailsCard extends StatelessWidget {
   final Map<String, String> details;
   const _PersonalDetailsCard({required this.details});
+
 
   @override
   Widget build(BuildContext context) {
@@ -273,23 +297,25 @@ class _PersonalDetailsCard extends StatelessWidget {
   }
 }
 
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.accent,
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: const [
-          Icon(Icons.home_outlined, color: Colors.black54),
-          Icon(Icons.chat_bubble_outline, color: Colors.black54),
-          Icon(Icons.school_outlined, color: Colors.black54),
-          Icon(Icons.settings, color: Colors.black87),
-        ],
-      ),
-    );
-  }
-}
+// class _BottomNavBar extends StatelessWidget {
+//   const _BottomNavBar();
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       color: AppColors.accent,
+//       padding: const EdgeInsets.symmetric(vertical: 10),
+//       child: Row(
+//         mainAxisAlignment: MainAxisAlignment.spaceAround,
+//         children: const [
+//           Icon(Icons.home_outlined, color: Colors.black54),
+//           Icon(Icons.chat_bubble_outline, color: Colors.black54),
+//           Icon(Icons.school_outlined, color: Colors.black54),
+//           Icon(Icons.settings, color: Colors.black87),
+//         ],
+//       ),
+//     );
+//   }
+// }
+

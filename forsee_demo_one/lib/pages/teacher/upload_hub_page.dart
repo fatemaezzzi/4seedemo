@@ -1,564 +1,407 @@
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:forsee_demo_one/app/routes/app_routes.dart';
+// lib/pages/teacher/upload_hub_page.dart
+// ========================================
+// BACKEND WIRED:
+//  • Receives students list with firestoreIds from CreateMarksEntryPage
+//  • Live grade calculation and stats bar as teacher types marks
+//  • Passes complete marksData (including firestoreId per student) to ReviewSubmitPage
+//  • Validation: marks must be between 0 and maxMarks
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HOW TO NAVIGATE HERE from create_marks_entry_page.dart:
-//
-// Get.toNamed(AppRoutes.UPLOAD_HUB, arguments: {
-//   'examTitle': 'Mid-Term I',
-//   'date':      '01/01/2025',
-//   'maxMarks':  100,
-//   'passMarks': 35,
-//   'subject':   'Science',
-//   'className': 'Class 12-B',
-// });
-// ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/material.dart';
+import 'package:forsee_demo_one/pages/teacher/review_submit_page.dart';
 
 class UploadHubPage extends StatefulWidget {
-  // ✅ FIXED: No required constructor params — data comes from Get.arguments
-  const UploadHubPage({super.key});
+  final String examTitle;
+  final String date;
+  final int    maxMarks;
+  final int    passMarks;
+  final String subject;
+  final String className;
+  final String semester;
+  // Each: { 'roll': String, 'name': String, 'firestoreId': String }
+  final List<Map<String, dynamic>> students;
+
+  const UploadHubPage({
+    super.key,
+    required this.examTitle,
+    required this.date,
+    required this.maxMarks,
+    required this.passMarks,
+    required this.subject,
+    required this.className,
+    required this.semester,
+    required this.students,
+  });
 
   @override
   State<UploadHubPage> createState() => _UploadHubPageState();
 }
 
 class _UploadHubPageState extends State<UploadHubPage> {
-
-  // ── Read exam metadata from Get.arguments ─────────────────────────────────
-  Map<String, dynamic> get _args =>
-      (Get.arguments as Map<String, dynamic>?) ?? {};
-
-  String get _examTitle => _args['examTitle'] as String? ?? 'Mid-Term I';
-  String get _date      => _args['date']      as String? ?? '01/01/2025';
-  int    get _maxMarks  => _args['maxMarks']  as int?    ?? 100;
-  int    get _passMarks => _args['passMarks'] as int?    ?? 35;
-  String get _subject   => _args['subject']   as String? ?? 'Science';
-  String get _className => _args['className'] as String? ?? 'Class 12-B';
-
-  // ── Student list (in production, fetch from Firestore by classroomId) ─────
-  final List<Map<String, dynamic>> _students = [
-    {'roll': '2090013', 'name': 'Dhruv Rathee'},
-    {'roll': '2090014', 'name': 'Sourav Joshi'},
-    {'roll': '2090015', 'name': 'Dhinchak Pooja'},
-    {'roll': '2090016', 'name': 'Nishchay Malhan'},
-    {'roll': '2090017', 'name': 'Ashish Chanchlani'},
-    {'roll': '2090018', 'name': 'CarryMinati'},
-    {'roll': '2090019', 'name': 'Triggered Insaan'},
-    {'roll': '2090020', 'name': 'Tanmay Bhat'},
-  ];
-
-  final Map<int, int?> _enteredMarks = {};
-  final Map<int, TextEditingController> _controllers = {};
+  // One controller and marks value per student
+  late final List<TextEditingController> _controllers;
+  late final List<int?> _marks;
 
   @override
   void initState() {
     super.initState();
-    for (int i = 0; i < _students.length; i++) {
-      _controllers[i] = TextEditingController();
-    }
+    _controllers = List.generate(
+        widget.students.length, (_) => TextEditingController());
+    _marks = List.filled(widget.students.length, null);
   }
 
   @override
   void dispose() {
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
+    for (final c in _controllers) c.dispose();
     super.dispose();
   }
 
-  // ── HELPERS ───────────────────────────────────────────────────────────────
-  int get _filledCount =>
-      _enteredMarks.values.where((v) => v != null).length;
+  // ── GRADE CALCULATION ─────────────────────────────────────────────────────
 
-  double get _classAverage {
-    final filled = _enteredMarks.values.whereType<int>().toList();
-    if (filled.isEmpty) return 0;
-    return filled.reduce((a, b) => a + b) / filled.length;
-  }
-
-  Color _statusColor(int? marks) {
-    if (marks == null) return Colors.white24;
-    return marks >= _passMarks ? Colors.greenAccent : Colors.redAccent;
-  }
-
-  String _grade(int? marks) {
-    if (marks == null) return '—';
-    final pct = marks / _maxMarks * 100;
+  String _grade(int marks) {
+    final pct = marks / widget.maxMarks * 100;
     if (pct >= 90) return 'A+';
     if (pct >= 75) return 'A';
     if (pct >= 60) return 'B';
     if (pct >= 45) return 'C';
-    if (pct >= (_passMarks / _maxMarks * 100)) return 'D';
+    if (marks >= widget.passMarks) return 'D';
     return 'F';
   }
 
-  bool _isValidMark(String val) {
-    final parsed = int.tryParse(val);
-    return parsed != null && parsed >= 0 && parsed <= _maxMarks;
+  Color _gradeColor(String grade) {
+    switch (grade) {
+      case 'A+': return Colors.greenAccent;
+      case 'A':  return Colors.lightGreenAccent;
+      case 'B':  return Colors.yellowAccent;
+      case 'C':  return Colors.orangeAccent;
+      case 'D':  return Colors.orange;
+      case 'F':  return Colors.redAccent;
+      default:   return Colors.white38;
+    }
   }
 
+  // ── STATS ─────────────────────────────────────────────────────────────────
+
+  List<int?> get _filledMarks => _marks.where((m) => m != null).toList();
+
+  double get _average => _filledMarks.isEmpty
+      ? 0
+      : _filledMarks.fold<int>(0, (s, m) => s + m!) / _filledMarks.length;
+
+  int get _passCount =>
+      _filledMarks.where((m) => m! >= widget.passMarks).length;
+
+  int get _failCount => _filledMarks.length - _passCount;
+
   // ── NAVIGATE TO REVIEW ────────────────────────────────────────────────────
-  void _onNext() {
-    if (_filledCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Please enter marks for at least one student.',
-            style: TextStyle(fontFamily: 'Pridi'),
-          ),
-          backgroundColor: const Color(0xFF3B2028),
-          behavior: SnackBarBehavior.floating,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
+
+  void _next() {
+    // Check if any marks are entered
+    if (_filledMarks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Enter marks for at least one student.',
+            style: TextStyle(fontFamily: 'Pridi')),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
       return;
     }
 
-    // Build marksData list
-    final List<Map<String, dynamic>> marksData = [];
-    for (int i = 0; i < _students.length; i++) {
+    // Build marksData list — includes firestoreId for each student
+    final marksData = <Map<String, dynamic>>[];
+    for (int i = 0; i < widget.students.length; i++) {
+      final st = widget.students[i];
+      final m  = _marks[i];
       marksData.add({
-        'roll':   _students[i]['roll'],
-        'name':   _students[i]['name'],
-        'marks':  _enteredMarks[i],
-        'grade':  _grade(_enteredMarks[i]),
-        'passed': _enteredMarks[i] != null &&
-            _enteredMarks[i]! >= _passMarks,
+        'name':        st['name'],
+        'roll':        st['roll'],
+        'firestoreId': st['firestoreId'], // ← propagated for Firebase save
+        'marks':       m,
+        'grade':       m != null ? _grade(m) : '—',
+        'passed':      m != null && m >= widget.passMarks,
       });
     }
 
-    // ✅ FIXED: Get.toNamed with Map arguments instead of Navigator.push
-    Get.toNamed(AppRoutes.REVIEW_SUBMIT, arguments: {
-      'examTitle': _examTitle,
-      'date':      _date,
-      'maxMarks':  _maxMarks,
-      'passMarks': _passMarks,
-      'subject':   _subject,
-      'className': _className,
-      'marksData': marksData,
-    });
-  }
-
-  // ── BUILD — all UI below is UNCHANGED ────────────────────────────────────
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF512D38),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── HEADER ────────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 12, 20, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new,
-                        color: Colors.white, size: 20),
-                    onPressed: () => Get.back(),
-                  ),
-                  const Expanded(
-                    child: Text(
-                      'Enter Scores',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Pridi',
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE9C2D7).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '$_filledCount / ${_students.length}',
-                      style: const TextStyle(
-                        color: Color(0xFFE9C2D7),
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── EXAM INFO BANNER ──────────────────────────────────────────
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              padding:
-              const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3B2028),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _examTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Pridi',
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '$_subject  •  $_className  •  $_date',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Max: $_maxMarks',
-                        style: const TextStyle(
-                          color: Color(0xFFE9C2D7),
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Pass: $_passMarks',
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // ── LIVE STATS BAR ────────────────────────────────────────────
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: _filledCount > 0
-                  ? Container(
-                key: const ValueKey('stats'),
-                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4A3439),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _statChip(
-                      'Average',
-                      _classAverage.toStringAsFixed(1),
-                      Icons.bar_chart,
-                    ),
-                    _statChip(
-                      'Passed',
-                      '${_enteredMarks.values.whereType<int>().where((m) => m >= _passMarks).length}',
-                      Icons.check_circle_outline,
-                      color: Colors.greenAccent,
-                    ),
-                    _statChip(
-                      'Failed',
-                      '${_enteredMarks.values.whereType<int>().where((m) => m < _passMarks).length}',
-                      Icons.cancel_outlined,
-                      color: Colors.redAccent,
-                    ),
-                  ],
-                ),
-              )
-                  : const SizedBox(key: ValueKey('empty'), height: 0),
-            ),
-
-            const SizedBox(height: 10),
-
-            // ── TABLE HEADER ──────────────────────────────────────────────
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding:
-              const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFA6768B),
-                borderRadius:
-                BorderRadius.vertical(top: Radius.circular(14)),
-              ),
-              child: const Row(
-                children: [
-                  SizedBox(width: 36),
-                  SizedBox(width: 10),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'Student',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Pridi',
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 80,
-                    child: Text(
-                      'Marks',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Pridi',
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 40,
-                    child: Text(
-                      'Grade',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Pridi',
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── STUDENT ROWS ──────────────────────────────────────────────
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF3B2028),
-                  borderRadius:
-                  BorderRadius.vertical(bottom: Radius.circular(14)),
-                ),
-                child: ListView.separated(
-                  padding: EdgeInsets.zero,
-                  itemCount: _students.length,
-                  separatorBuilder: (_, __) => Divider(
-                    height: 1,
-                    color: Colors.white.withOpacity(0.06),
-                    indent: 16,
-                    endIndent: 16,
-                  ),
-                  itemBuilder: (_, i) {
-                    final marks = _enteredMarks[i];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      child: Row(
-                        children: [
-                          // Avatar
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor:
-                            _statusColor(marks).withOpacity(0.15),
-                            child: Text(
-                              _students[i]['name'].toString()[0],
-                              style: TextStyle(
-                                color: marks == null
-                                    ? Colors.white38
-                                    : _statusColor(marks),
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'Pridi',
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-
-                          // Name + roll number
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _students[i]['name'],
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontFamily: 'Pridi',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  _students[i]['roll'],
-                                  style: const TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Marks input field
-                          SizedBox(
-                            width: 80,
-                            child: TextField(
-                              controller: _controllers[i],
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: _statusColor(marks),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                fontFamily: 'Pridi',
-                              ),
-                              decoration: InputDecoration(
-                                hintText: '—',
-                                hintStyle: const TextStyle(
-                                    color: Colors.white24, fontSize: 16),
-                                filled: true,
-                                fillColor: const Color(0xFF4A3439),
-                                contentPadding:
-                                const EdgeInsets.symmetric(vertical: 8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFE9C2D7),
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                              onChanged: (val) {
-                                setState(() {
-                                  if (val.isEmpty) {
-                                    _enteredMarks[i] = null;
-                                  } else if (_isValidMark(val)) {
-                                    _enteredMarks[i] = int.parse(val);
-                                  }
-                                });
-                              },
-                            ),
-                          ),
-
-                          // Grade badge
-                          SizedBox(
-                            width: 40,
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: marks == null
-                                      ? Colors.transparent
-                                      : _statusColor(marks).withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  _grade(marks),
-                                  style: TextStyle(
-                                    color: marks == null
-                                        ? Colors.white24
-                                        : _statusColor(marks),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── NEXT BUTTON ───────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: _onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE9C2D7),
-                    foregroundColor: const Color(0xFF3B2028),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Next: Review & Submit',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Pridi',
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_ios, size: 16),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReviewSubmitPage(
+          examTitle: widget.examTitle,
+          date:      widget.date,
+          maxMarks:  widget.maxMarks,
+          passMarks: widget.passMarks,
+          subject:   widget.subject,
+          className: widget.className,
+          marksData: marksData,
         ),
       ),
     );
   }
 
-  // ── STAT CHIP ─────────────────────────────────────────────────────────────
-  Widget _statChip(String label, String value, IconData icon,
-      {Color color = const Color(0xFFE9C2D7)}) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: color, size: 14),
-            const SizedBox(width: 4),
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                fontFamily: 'Pridi',
+  @override
+  Widget build(BuildContext context) {
+    final filled = _filledMarks.length;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF512D38),
+      body: SafeArea(
+        child: Column(children: [
+
+          // ── HEADER ──────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 20, 0),
+            child: Row(children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new,
+                    color: Colors.white, size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Enter Marks',
+                      style: TextStyle(color: Colors.white, fontSize: 22,
+                          fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                  Text('${widget.examTitle}  •  ${widget.className}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                ]),
+              ),
+              // Progress indicator
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF6B3248),
+                    borderRadius: BorderRadius.circular(20)),
+                child: Text(
+                  '$filled / ${widget.students.length}',
+                  style: const TextStyle(color: Colors.white,
+                      fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+            ]),
+          ),
+
+          // ── EXAM INFO ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF6B3248),
+                  borderRadius: BorderRadius.circular(14)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _infoChip('Max', '${widget.maxMarks}', Colors.white),
+                  _infoChip('Pass', '${widget.passMarks}', Colors.lightGreenAccent),
+                  _infoChip('Date', widget.date, Colors.white70),
+                  _infoChip('Subject', widget.subject, const Color(0xFFE9C2D7)),
+                ],
               ),
             ),
-          ],
-        ),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white38, fontSize: 11),
-        ),
-      ],
+          ),
+
+          // ── LIVE STATS (visible once marks are entered) ───────────────────
+          if (filled > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF3B2028),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _statPill('Avg', _average.toStringAsFixed(1), Colors.white),
+                    _statPill('Pass', '$_passCount', Colors.greenAccent),
+                    _statPill('Fail', '$_failCount', Colors.redAccent),
+                  ],
+                ),
+              ),
+            ),
+
+          const SizedBox(height: 10),
+
+          // ── TABLE HEADER ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(children: const [
+              SizedBox(width: 40, child: Text('Roll', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+              SizedBox(width: 12),
+              Expanded(child: Text('Student', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+              SizedBox(width: 80, child: Text('Marks', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+              SizedBox(width: 44, child: Text('Grade', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+          const Divider(color: Colors.white12, indent: 20, endIndent: 20),
+
+          // ── STUDENT ROWS ──────────────────────────────────────────────────
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: widget.students.length,
+              separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: Colors.white12),
+              itemBuilder: (_, i) {
+                final st    = widget.students[i];
+                final m     = _marks[i];
+                final grade = m != null ? _grade(m) : '—';
+                final gc    = _gradeColor(grade);
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    // Roll
+                    SizedBox(
+                      width: 40,
+                      child: Text(st['roll'] as String,
+                          style: const TextStyle(color: Colors.white38,
+                              fontSize: 11, fontFamily: 'Pridi'),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 12),
+                    // Name + avatar
+                    Expanded(
+                      child: Row(children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: m == null
+                              ? Colors.white12
+                              : (m >= widget.passMarks
+                              ? Colors.greenAccent
+                              : Colors.redAccent)
+                              .withOpacity(0.15),
+                          child: Text(
+                            (st['name'] as String)[0],
+                            style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.bold,
+                              color: m == null
+                                  ? Colors.white38
+                                  : m >= widget.passMarks
+                                  ? Colors.greenAccent
+                                  : Colors.redAccent,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(st['name'] as String,
+                              style: const TextStyle(color: Colors.white,
+                                  fontSize: 13, fontFamily: 'Pridi'),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ]),
+                    ),
+                    // Marks input
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        controller: _controllers[i],
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white,
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: '—',
+                          hintStyle: const TextStyle(color: Colors.white24),
+                          filled: true,
+                          fillColor: const Color(0xFF6B3248),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8, horizontal: 8),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none),
+                        ),
+                        onChanged: (val) {
+                          final parsed = int.tryParse(val.trim());
+                          setState(() {
+                            if (parsed == null) {
+                              _marks[i] = null;
+                            } else {
+                              _marks[i] = parsed.clamp(0, widget.maxMarks);
+                              // Clamp input visually
+                              if (parsed > widget.maxMarks) {
+                                _controllers[i].text =
+                                '${widget.maxMarks}';
+                                _controllers[i].selection =
+                                    TextSelection.fromPosition(TextPosition(
+                                        offset: _controllers[i].text.length));
+                              }
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                    // Grade badge
+                    SizedBox(
+                      width: 44,
+                      child: Center(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: m == null
+                              ? const Text('—',
+                              style: TextStyle(color: Colors.white24))
+                              : Container(
+                            key: ValueKey(grade),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: gc.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6)),
+                            child: Text(grade,
+                                style: TextStyle(
+                                    color: gc,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+
+          // ── NEXT BUTTON ───────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: SizedBox(
+              width: double.infinity, height: 52,
+              child: ElevatedButton(
+                onPressed: _next,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE9C2D7),
+                  foregroundColor: const Color(0xFF512D38),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(
+                    'Next: Review & Submit  ($filled/${widget.students.length})',
+                    style: const TextStyle(fontSize: 15,
+                        fontWeight: FontWeight.bold, fontFamily: 'Pridi'),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios, size: 16),
+                ]),
+              ),
+            ),
+          ),
+        ]),
+      ),
     );
   }
+
+  Widget _infoChip(String label, String value, Color color) => Column(children: [
+    Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Pridi')),
+    Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+  ]);
+
+  Widget _statPill(String label, String value, Color color) => Column(children: [
+    Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Pridi')),
+    Text(label, style: TextStyle(color: color.withOpacity(0.6), fontSize: 11)),
+  ]);
 }

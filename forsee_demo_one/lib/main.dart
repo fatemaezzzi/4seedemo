@@ -6,7 +6,7 @@ import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/theme/app_theme.dart';
 import 'services/firebase_options.dart';
-
+import 'package:forsee_demo_one/services/firestore_repository.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -16,7 +16,7 @@ void main() async {
   // Register AuthController globally before app starts.
   // permanent: true → never destroyed while app is alive.
   Get.put(AuthController(), permanent: true);
-
+  Get.put(FirestoreRepository(), permanent: true);
   runApp(const FourSeeApp());
 }
 

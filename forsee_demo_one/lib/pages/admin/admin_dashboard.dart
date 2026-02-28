@@ -3,34 +3,8 @@ import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/pages/settings/admin_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
 import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
-
-// ── DATA MODELS ────────────────────────────────────────────────────────────────
-
-class ClassroomRiskSummary {
-  final String className;
-  final String teacherName;
-  final int highRiskCount;
-
-  const ClassroomRiskSummary({
-    required this.className,
-    required this.teacherName,
-    required this.highRiskCount,
-  });
-}
-
-class ActivityLogEntry {
-  final String message;
-  final DateTime time;
-  final IconData icon;
-  final Color color;
-
-  const ActivityLogEntry({
-    required this.message,
-    required this.time,
-    required this.icon,
-    required this.color,
-  });
-}
+import 'package:forsee_demo_one/services/admin_firebase_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ── ADMIN DASHBOARD ────────────────────────────────────────────────────────────
 
@@ -44,39 +18,78 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedNavIndex = 0;
 
-  // ── MOCK DATA ──────────────────────────────────────────────────────────────
+  // Live data
+  AdminStats? _stats;
+  List<ClassroomRiskData> _classroomRisks = [];
+  List<Map<String, dynamic>> _recentPredictions = [];
+  bool _loading = true;
 
-  final int _totalTeachers = 42;
-  final int _totalStudents = 1290;
-  final int _criticalRisk = 45;
-  final int _avgAttendance = 88;
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+    _loadClassrooms();
+  }
 
-  final List<ClassroomRiskSummary> _atRiskClassrooms = const [
-    ClassroomRiskSummary(className: 'Class 10A', teacherName: 'Anita Desai',  highRiskCount: 5),
-    ClassroomRiskSummary(className: 'Class 9B',  teacherName: 'Rajesh Kumar', highRiskCount: 7),
-    ClassroomRiskSummary(className: 'Class 8C',  teacherName: 'Meena Shah',   highRiskCount: 3),
-    ClassroomRiskSummary(className: 'Class 11A', teacherName: 'Arjun Patel',  highRiskCount: 6),
-  ];
+  Future<void> _loadStats() async {
+    try {
+      final stats = await AdminFirebaseService.fetchAdminStats();
+      if (mounted) setState(() { _stats = stats; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-  final List<ActivityLogEntry> _activityLog = [
-    ActivityLogEntry(message: 'Anita Desai logged a behaviour incident for Riya Sharma', time: DateTime.now().subtract(const Duration(minutes: 5)),  icon: Icons.warning_amber_rounded,  color: Colors.orangeAccent),
-    ActivityLogEntry(message: 'Rajesh Kumar added 7 new student marks for Class 9B',     time: DateTime.now().subtract(const Duration(minutes: 18)), icon: Icons.edit_note,              color: Colors.lightBlueAccent),
-    ActivityLogEntry(message: 'New teacher Priya Menon was registered',                   time: DateTime.now().subtract(const Duration(hours: 1)),    icon: Icons.person_add_alt_1,       color: Colors.greenAccent),
-    ActivityLogEntry(message: 'Meena Shah submitted a weekly report for Class 8C',        time: DateTime.now().subtract(const Duration(hours: 2)),    icon: Icons.description_outlined,   color: Colors.purpleAccent),
-    ActivityLogEntry(message: 'Arjun Patel flagged Aditya Verma as High Risk',            time: DateTime.now().subtract(const Duration(hours: 3)),    icon: Icons.flag_outlined,          color: Colors.redAccent),
-    ActivityLogEntry(message: 'System: Attendance sync completed for all classes',         time: DateTime.now().subtract(const Duration(hours: 5)),    icon: Icons.sync,                   color: Colors.tealAccent),
-  ];
+  Future<void> _loadClassrooms() async {
+    try {
+      final rooms = await AdminFirebaseService.fetchClassroomRiskData();
+      if (mounted) setState(() => _classroomRisks = rooms);
+    } catch (_) {}
+  }
 
   // ── HELPERS ────────────────────────────────────────────────────────────────
 
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
+  String _timeAgo(Timestamp? ts) {
+    if (ts == null) return '';
+    final diff = DateTime.now().difference(ts.toDate());
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24)   return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
   }
 
+  Color _riskColor(String level) {
+    switch (level.toUpperCase()) {
+      case 'HIGH':   return Colors.redAccent;
+      case 'MEDIUM': return Colors.orangeAccent;
+      case 'LOW':    return Colors.yellowAccent;
+      default:       return Colors.tealAccent;
+    }
+  }
+
   // ── DIALOGS ────────────────────────────────────────────────────────────────
+
+  void _showStudentsDialog() {
+    if (_stats == null) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _BottomSheetContainer(
+        title: 'Student Overview (${_stats!.totalStudents})',
+        icon: Icons.school_outlined,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _statRow('Total Enrolled',  '${_stats!.totalStudents}', Colors.lightBlueAccent),
+            _statRow('High Risk',       '${_stats!.highRiskCount}',   Colors.redAccent),
+            _statRow('Medium Risk',     '${_stats!.mediumRiskCount}', Colors.orangeAccent),
+            _statRow('Low Risk',        '${_stats!.lowRiskCount}',    Colors.yellowAccent),
+            _statRow('No Risk / Unknown', '${_stats!.noRiskCount}',   Colors.tealAccent),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _showTeachersDialog() {
     showModalBottomSheet(
@@ -84,50 +97,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _BottomSheetContainer(
-        title: 'All Teachers (42)',
+        title: 'Teachers (${_stats?.totalTeachers ?? '…'})',
         icon: Icons.people_alt_outlined,
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 6,
-          separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
-          itemBuilder: (_, i) {
-            final teachers = ['Anita Desai', 'Rajesh Kumar', 'Meena Shah', 'Arjun Patel', 'Priya Menon', 'Suresh Nair'];
-            final classes  = ['Class 10A',   'Class 9B',    'Class 8C',   'Class 11A',   'Class 7B',    'Class 12A'];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: const Color(0xFFA8D0BC),
-                child: Text(teachers[i][0], style: const TextStyle(color: Color(0xFF3B2F2F), fontWeight: FontWeight.bold)),
-              ),
-              title: Text(teachers[i], style: const TextStyle(color: Colors.white, fontFamily: 'Pridi', fontWeight: FontWeight.w600)),
-              subtitle: Text(classes[i], style: const TextStyle(color: Colors.white54, fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+        child: StreamBuilder<List<FirestoreTeacher>>(
+          stream: AdminFirebaseService.streamTeachers(),
+          builder: (context, snap) {
+            if (!snap.hasData) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(color: Color(0xFFA8D0BC)),
+                ),
+              );
+            }
+            final teachers = snap.data!;
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: teachers.length,
+              separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
+              itemBuilder: (_, i) {
+                final t = teachers[i];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFA8D0BC),
+                    child: Text(
+                      t.name.isNotEmpty ? t.name[0].toUpperCase() : '?',
+                      style: const TextStyle(color: Color(0xFF3B2F2F), fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  title: Text(t.name, style: const TextStyle(color: Colors.white, fontFamily: 'Pridi', fontWeight: FontWeight.w600)),
+                  subtitle: Text(t.email, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                );
+              },
             );
           },
-        ),
-      ),
-    );
-  }
-
-  void _showStudentsDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _BottomSheetContainer(
-        title: 'Student Overview (1290)',
-        icon: Icons.school_outlined,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _statRow('Total Enrolled',  '1290', Colors.lightBlueAccent),
-            _statRow('Active Students', '1245', Colors.greenAccent),
-            _statRow('High Risk',       '45',   Colors.redAccent),
-            _statRow('Medium Risk',     '112',  Colors.orangeAccent),
-            _statRow('Low Risk',        '203',  Colors.yellowAccent),
-            _statRow('No Risk',         '930',  Colors.tealAccent),
-          ],
         ),
       ),
     );
@@ -139,30 +145,51 @@ class _AdminDashboardState extends State<AdminDashboard> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _BottomSheetContainer(
-        title: 'Critical Risk Students (45)',
+        title: 'Critical Risk Students (${_stats?.highRiskCount ?? '…'})',
         icon: Icons.warning_amber_rounded,
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 5,
-          separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
-          itemBuilder: (_, i) {
-            final names   = ['Riya Sharma', 'Aditya Verma', 'Pooja Singh', 'Mohit Jain', 'Sara Thomas'];
-            final classes = ['Class 10A',   'Class 11A',    'Class 9B',    'Class 8C',   'Class 9B'];
-            final reasons = ['Low attendance + behaviour', 'Multiple incidents', 'Failing 3 subjects', 'No homework + absent', 'Parent not reachable'];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: Colors.redAccent.withOpacity(0.2),
-                child: Text(names[i][0], style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-              ),
-              title: Text(names[i], style: const TextStyle(color: Colors.white, fontFamily: 'Pridi', fontWeight: FontWeight.w600)),
-              subtitle: Text('${classes[i]} · ${reasons[i]}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: const Text('HIGH', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
+        child: FutureBuilder<List<FirestoreStudent>>(
+          future: AdminFirebaseService.fetchAllStudents(),
+          builder: (context, snap) {
+            if (!snap.hasData) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(color: Colors.redAccent),
+                ),
+              );
+            }
+            final highRisk = snap.data!.where((s) => s.isHighRisk).toList();
+            if (highRisk.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No high-risk students found.', style: TextStyle(color: Colors.white54, fontFamily: 'Pridi')),
+              );
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: highRisk.length,
+              separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
+              itemBuilder: (_, i) {
+                final s = highRisk[i];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.redAccent.withOpacity(0.2),
+                    child: Text(s.name[0].toUpperCase(), style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  ),
+                  title: Text(s.name, style: const TextStyle(color: Colors.white, fontFamily: 'Pridi', fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    s.riskFactors.isNotEmpty ? s.riskFactors.join(', ') : 'Dropout risk: ${(s.dropoutProbability * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                    child: const Text('HIGH', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                );
+              },
             );
           },
         ),
@@ -170,37 +197,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showAttendanceDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _BottomSheetContainer(
-        title: 'Attendance Overview',
-        icon: Icons.bar_chart_outlined,
-        child: Column(
-          children: [
-            _attendanceBar('Class 10A', 92, Colors.greenAccent),
-            _attendanceBar('Class 9B',  85, Colors.lightBlueAccent),
-            _attendanceBar('Class 8C',  78, Colors.orangeAccent),
-            _attendanceBar('Class 11A', 91, Colors.tealAccent),
-            _attendanceBar('Class 7B',  88, Colors.purpleAccent),
-            _attendanceBar('Class 12A', 95, Colors.greenAccent),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.info_outline, color: Colors.white54, size: 14),
-                SizedBox(width: 6),
-                Text('School Average: 88%', style: TextStyle(color: Colors.white70, fontFamily: 'Pridi')),
-              ]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ── SHARED WIDGETS ─────────────────────────────────────────────────────────
 
   Widget _statRow(String label, String value, Color color) {
     return Padding(
@@ -208,28 +205,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text(label, style: const TextStyle(color: Colors.white70, fontFamily: 'Pridi', fontSize: 14)),
         Text(value, style: TextStyle(color: color, fontFamily: 'Pridi', fontWeight: FontWeight.bold, fontSize: 16)),
-      ]),
-    );
-  }
-
-  Widget _attendanceBar(String label, int pct, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Pridi')),
-          Text('$pct%', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ]),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: pct / 100,
-            backgroundColor: Colors.white10,
-            valueColor: AlwaysStoppedAnimation(color),
-            minHeight: 8,
-          ),
-        ),
       ]),
     );
   }
@@ -245,26 +220,42 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _buildHeader(),
             Expanded(
-              child: SingleChildScrollView(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFA8D0BC)))
+                  : SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 16),
-                    _buildStatCard('Total Teachers', '$_totalTeachers', null, _showTeachersDialog),
+                    _buildStatCard(
+                      'Total Teachers',
+                      '${_stats?.totalTeachers ?? '…'}',
+                      null,
+                      _showTeachersDialog,
+                    ),
                     const SizedBox(height: 10),
-                    _buildStatCard('Total Students', '$_totalStudents', null, _showStudentsDialog),
+                    _buildStatCard(
+                      'Total Students',
+                      '${_stats?.totalStudents ?? '…'}',
+                      null,
+                      _showStudentsDialog,
+                    ),
                     const SizedBox(height: 10),
-                    _buildStatCard('Critical Risk', '$_criticalRisk', '!', _showCriticalRiskDialog, valueColor: Colors.redAccent),
-                    const SizedBox(height: 10),
-                    _buildStatCard('Avg Attendance', '$_avgAttendance%', null, _showAttendanceDialog),
+                    _buildStatCard(
+                      'Critical Risk',
+                      '${_stats?.highRiskCount ?? '…'}',
+                      _stats != null && _stats!.highRiskCount > 0 ? '!' : null,
+                      _showCriticalRiskDialog,
+                      valueColor: Colors.redAccent,
+                    ),
                     const SizedBox(height: 24),
                     const Text('At-Risk Classrooms Overview',
                         style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Pridi')),
                     const SizedBox(height: 10),
                     _buildAtRiskCard(),
                     const SizedBox(height: 24),
-                    const Text('Recent Activity Log',
+                    const Text('Recent Predictions',
                         style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Pridi')),
                     const SizedBox(height: 10),
                     _buildActivityLog(),
@@ -302,11 +293,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 letterSpacing: 1.2,
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Color(0xFF3B2F2F)),
-              onPressed: () => AuthController.to.logout(),
-              tooltip: 'Logout',
-            ),
+            Row(children: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Color(0xFF3B2F2F)),
+                onPressed: () {
+                  setState(() => _loading = true);
+                  _loadStats();
+                  _loadClassrooms();
+                },
+                tooltip: 'Refresh',
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout, color: Color(0xFF3B2F2F)),
+                onPressed: () => AuthController.to.logout(),
+                tooltip: 'Logout',
+              ),
+            ]),
           ],
         ),
       ),
@@ -315,7 +317,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   // ── STAT CARD ──────────────────────────────────────────────────────────────
 
-  Widget _buildStatCard(String label, String value, String? badge, VoidCallback onTap, {Color? valueColor}) {
+  Widget _buildStatCard(String label, String value, String? badge, VoidCallback onTap,
+      {Color? valueColor}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -329,7 +332,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('$label: ', style: const TextStyle(color: Color(0xFF3B2F2F), fontSize: 16, fontFamily: 'Pridi')),
-            Text(value, style: TextStyle(color: valueColor ?? const Color(0xFF3B2F2F), fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+            Text(value,
+                style: TextStyle(
+                  color: valueColor ?? const Color(0xFF3B2F2F),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Pridi',
+                )),
             if (badge != null) ...[
               const SizedBox(width: 4),
               Text(badge, style: const TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
@@ -343,45 +352,66 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // ── AT-RISK CLASSROOMS ─────────────────────────────────────────────────────
 
   Widget _buildAtRiskCard() {
+    if (_classroomRisks.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
+        child: const Center(
+          child: Text('No classroom data yet.', style: TextStyle(color: Color(0xFF3B2F2F), fontFamily: 'Pridi')),
+        ),
+      );
+    }
+
+    // Only show classrooms that have at least 1 high-risk student
+    final atRisk = _classroomRisks.where((c) => c.highRiskCount > 0).toList()
+      ..sort((a, b) => b.highRiskCount.compareTo(a.highRiskCount));
+
+    if (atRisk.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
+        child: const Center(
+          child: Text('No high-risk classrooms! 🎉', style: TextStyle(color: Color(0xFF3B2F2F), fontFamily: 'Pridi')),
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFA8D0BC),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
       child: Column(
-        children: _atRiskClassrooms.asMap().entries.map((entry) {
+        children: atRisk.asMap().entries.map((entry) {
           final i = entry.key;
           final c = entry.value;
           return Column(
             children: [
-              GestureDetector(
-                onTap: () => _showClassroomDetail(c),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${c.className} (${c.teacherName}):',
-                            style: const TextStyle(color: Color(0xFF3B2F2F), fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pridi'),
-                          ),
-                          Text(
-                            '${c.highRiskCount} High Risk',
-                            style: const TextStyle(color: Colors.red, fontSize: 13, fontFamily: 'Pridi'),
-                          ),
-                        ],
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(
+                        'Classroom ${c.classroomId}',
+                        style: const TextStyle(color: Color(0xFF3B2F2F), fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Pridi'),
                       ),
-                      const Icon(Icons.chevron_right, color: Color(0xFF3B2F2F), size: 20),
-                    ],
-                  ),
+                      Text(
+                        '${c.highRiskCount} High Risk  ·  ${c.mediumRiskCount} Medium Risk',
+                        style: const TextStyle(color: Colors.red, fontSize: 13, fontFamily: 'Pridi'),
+                      ),
+                      Text(
+                        '${c.totalStudents} total students',
+                        style: const TextStyle(color: Color(0xFF7B5B60), fontSize: 11, fontFamily: 'Pridi'),
+                      ),
+                    ]),
+                    const Icon(Icons.chevron_right, color: Color(0xFF3B2F2F), size: 20),
+                  ],
                 ),
               ),
-              if (i < _atRiskClassrooms.length - 1)
+              if (i < atRisk.length - 1)
                 const Divider(color: Color(0xFF3B2F2F), thickness: 0.3),
             ],
           );
@@ -390,79 +420,80 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showClassroomDetail(ClassroomRiskSummary c) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _BottomSheetContainer(
-        title: '${c.className} · ${c.teacherName}',
-        icon: Icons.class_outlined,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _statRow('High Risk Students', '${c.highRiskCount}', Colors.redAccent),
-            _statRow('Teacher', c.teacherName, Colors.lightBlueAccent),
-            const SizedBox(height: 12),
-            const Text('Recommended Actions', style: TextStyle(color: Colors.white70, fontFamily: 'Pridi', fontSize: 13, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _actionChip(Icons.people_alt_outlined,     'Schedule parent-teacher meeting'),
-            _actionChip(Icons.psychology_outlined,      'Refer to school counselor'),
-            _actionChip(Icons.assignment_late_outlined, 'Review academic support plan'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _actionChip(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(children: [
-        Icon(icon, color: const Color(0xFFA8D0BC), size: 16),
-        const SizedBox(width: 8),
-        Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Pridi')),
-      ]),
-    );
-  }
-
-  // ── ACTIVITY LOG ───────────────────────────────────────────────────────────
+  // ── ACTIVITY LOG (recent predictions) ────────────────────────────────────
 
   Widget _buildActivityLog() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFA8D0BC),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: _activityLog.map((entry) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: entry.color.withOpacity(0.15),
-                  child: Icon(entry.icon, color: entry.color, size: 16),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(entry.message, style: const TextStyle(color: Color(0xFF3B2F2F), fontSize: 12, fontFamily: 'Pridi')),
-                      const SizedBox(height: 2),
-                      Text(_timeAgo(entry.time), style: const TextStyle(color: Color(0xFF7B5B60), fontSize: 11)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: AdminFirebaseService.streamRecentPredictions(limit: 8),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator(color: Color(0xFFA8D0BC)));
+        }
+
+        final items = snap.data!;
+        if (items.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
+            child: const Center(child: Text('No recent predictions.', style: TextStyle(color: Color(0xFF3B2F2F), fontFamily: 'Pridi'))),
           );
-        }).toList(),
-      ),
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: const Color(0xFFA8D0BC), borderRadius: BorderRadius.circular(20)),
+          child: Column(
+            children: items.map((item) {
+              final riskLevel  = item['risk_level'] as String? ?? 'UNKNOWN';
+              final studentName = item['studentName'] as String? ?? 'Unknown';
+              final ts         = item['timestamp'] as Timestamp?;
+              final color      = _riskColor(riskLevel);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: color.withOpacity(0.15),
+                      child: Icon(Icons.analytics_outlined, color: color, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$studentName flagged as $riskLevel risk',
+                            style: const TextStyle(color: Color(0xFF3B2F2F), fontSize: 12, fontFamily: 'Pridi'),
+                          ),
+                          if (item['recommendation'] != null)
+                            Text(
+                              item['recommendation'],
+                              style: const TextStyle(color: Color(0xFF7B5B60), fontSize: 11, fontFamily: 'Pridi'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          const SizedBox(height: 2),
+                          Text(_timeAgo(ts), style: const TextStyle(color: Color(0xFF7B5B60), fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                      child: Text(riskLevel, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
     );
   }
 
@@ -486,44 +517,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
           return GestureDetector(
             onTap: () {
               setState(() => _selectedNavIndex = e.key);
-
               if (e.key == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const TeacherAnalysisPage()),
-                ).then((_) => setState(() => _selectedNavIndex = 0));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherAnalysisPage()))
+                    .then((_) => setState(() => _selectedNavIndex = 0));
               }
               if (e.key == 2) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const StudentDatabasePage()),
-                ).then((_) => setState(() => _selectedNavIndex = 0));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentDatabasePage()))
+                    .then((_) => setState(() => _selectedNavIndex = 0));
               }
               if (e.key == 3) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AdminSettingsPage()),
-                ).then((_) => setState(() => _selectedNavIndex = 0));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminSettingsPage()))
+                    .then((_) => setState(() => _selectedNavIndex = 0));
               }
             },
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  e.value.$1,
-                  color: selected ? const Color(0xFF3B2F2F) : const Color(0xFF7B8C87),
-                  size: selected ? 28 : 24,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  e.value.$2,
-                  style: TextStyle(
+                Icon(e.value.$1,
                     color: selected ? const Color(0xFF3B2F2F) : const Color(0xFF7B8C87),
-                    fontSize: 10,
-                    fontFamily: 'Pridi',
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
+                    size: selected ? 28 : 24),
+                const SizedBox(height: 2),
+                Text(e.value.$2,
+                    style: TextStyle(
+                      color: selected ? const Color(0xFF3B2F2F) : const Color(0xFF7B8C87),
+                      fontSize: 10,
+                      fontFamily: 'Pridi',
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    )),
               ],
             ),
           );
@@ -577,7 +597,7 @@ class _BottomSheetContainer extends StatelessWidget {
           Row(children: [
             Icon(icon, color: const Color(0xFFA8D0BC), size: 22),
             const SizedBox(width: 10),
-            Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+            Flexible(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pridi'))),
           ]),
           const SizedBox(height: 16),
           child,

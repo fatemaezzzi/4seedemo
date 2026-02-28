@@ -4,7 +4,7 @@ import 'package:forsee_demo_one/app/middleware/auth_middleware.dart';
 
 // ── Public pages ──────────────────────────────────────────────────────────────
 import 'package:forsee_demo_one/pages/welcome_page_first.dart';
-import 'package:forsee_demo_one/pages/welcome_page_seond.dart';    // typo kept as-is
+import 'package:forsee_demo_one/pages/welcome_page_seond.dart';
 import 'package:forsee_demo_one/pages/login_page.dart';
 import 'package:forsee_demo_one/pages/sign_up_page.dart';
 
@@ -36,8 +36,9 @@ import 'package:forsee_demo_one/pages/profile/student_profile_page.dart';
 import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/report_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
+import 'package:forsee_demo_one/model/student_model.dart';
 
-// ── Shared pages (all logged-in roles) ───────────────────────────────────────
+// ── Shared pages ──────────────────────────────────────────────────────────────
 import 'package:forsee_demo_one/pages/shared/change_password_page.dart';
 import 'package:forsee_demo_one/pages/shared/faqs_page.dart';
 import 'package:forsee_demo_one/pages/shared/linked_account_page.dart';
@@ -47,7 +48,7 @@ import 'package:forsee_demo_one/pages/shared/talk_counsellor_page.dart';
 class AppPages {
   static final pages = [
 
-    // ── PUBLIC — no auth required ─────────────────────────────────────────────
+    // ── PUBLIC ────────────────────────────────────────────────────────────────
     GetPage(
       name: AppRoutes.WELCOME_ONE,
       page: () => const WelcomePageFirst(),
@@ -57,7 +58,6 @@ class AppPages {
       page: () => const WelcomePageSecond(),
     ),
     GetPage(
-      // AccountSelectionPage lives inside welcome_page_seond.dart
       name: AppRoutes.ACCOUNT_SELECT,
       page: () => const AccountSelectionPage(),
     ),
@@ -70,7 +70,7 @@ class AppPages {
       page: () => const SignUpPage(),
     ),
 
-    // ── ADMIN ONLY ────────────────────────────────────────────────────────────
+    // ── ADMIN ─────────────────────────────────────────────────────────────────
     GetPage(
       name: AppRoutes.ADMIN_DASHBOARD,
       page: () => const AdminDashboard(),
@@ -87,7 +87,7 @@ class AppPages {
       middlewares: [AuthMiddleware(allowed: ['admin'])],
     ),
 
-    // ── TEACHER ONLY ──────────────────────────────────────────────────────────
+    // ── TEACHER ───────────────────────────────────────────────────────────────
     GetPage(
       name: AppRoutes.TEACHER_DASHBOARD,
       page: () => const TeacherDashboard(),
@@ -118,19 +118,46 @@ class AppPages {
       page: () => const CreateMarksEntryPage(),
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
+
+    // ── FIXED: pulls args from Get.arguments instead of const constructor ─────
     GetPage(
       name: AppRoutes.REVIEW_SUBMIT,
-      page: () => const ReviewSubmitPage(),
-      middlewares: [AuthMiddleware(allowed: ['teacher'])],
-    ),
-    GetPage(
-      name: AppRoutes.TEACHER_ANALYSIS,
-      page: () => const TeacherAnalysisPage(),
+      page: () {
+        final args = Get.arguments as Map<String, dynamic>;
+        return ReviewSubmitPage(
+          examTitle: args['examTitle'] as String,
+          date:      args['date']      as String,
+          maxMarks:  args['maxMarks']  as int,
+          passMarks: args['passMarks'] as int,
+          subject:   args['subject']   as String,
+          className: args['className'] as String,
+          marksData: List<Map<String, dynamic>>.from(args['marksData']),
+        );
+      },
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
     GetPage(
       name: AppRoutes.UPLOAD_HUB,
-      page: () => const UploadHubPage(),
+      page: () {
+        final args = Get.arguments as Map<String, dynamic>;
+        return UploadHubPage(
+          examTitle: args['examTitle'] as String,
+          date:      args['date']      as String,
+          maxMarks:  args['maxMarks']  as int,
+          passMarks: args['passMarks'] as int,
+          subject:   args['subject']   as String,
+          className: args['className'] as String,
+          semester:  args['semester']  as String,
+          students:  List<Map<String, dynamic>>.from(args['students']),
+        );
+      },
+      middlewares: [AuthMiddleware(allowed: ['teacher'])],
+    ),
+    // ─────────────────────────────────────────────────────────────────────────
+
+    GetPage(
+      name: AppRoutes.TEACHER_ANALYSIS,
+      page: () => const TeacherAnalysisPage(),
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
     GetPage(
@@ -154,17 +181,21 @@ class AppPages {
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
 
-    // ── STUDENT ONLY ──────────────────────────────────────────────────────────
+    // ── STUDENT ───────────────────────────────────────────────────────────────
     GetPage(
       name: AppRoutes.STUDENT_DASHBOARD,
       page: () => const StudentDashboard(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
+
+    // ── FIXED: pulls StudentModel from Get.arguments ──────────────────────────
     GetPage(
       name: AppRoutes.STUDENT_PROFILE,
       page: () => const StudentProfilePage(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
+    // ─────────────────────────────────────────────────────────────────────────
+
     GetPage(
       name: AppRoutes.STUDENT_SETTINGS,
       page: () => const StudentSettingsPage(),
@@ -181,7 +212,7 @@ class AppPages {
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
 
-    // ── SHARED — any logged-in role ───────────────────────────────────────────
+    // ── SHARED ────────────────────────────────────────────────────────────────
     GetPage(
       name: AppRoutes.CHANGE_PASSWORD,
       page: () => const ChangePasswordPage(),

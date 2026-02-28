@@ -1,8 +1,97 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:forsee_demo_one/pages/teacher/classroom_page.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
+
+// ── DATA MODELS ───────────────────────────────────────────────────────────────
+
+class _RiskyStudent {
+  final String studentId;
+  final String name;
+  final String classId;
+  final String riskLevel;
+  final List<String> riskFactors;
+  final String recommendation;
+
+  const _RiskyStudent({
+    required this.studentId,
+    required this.name,
+    required this.classId,
+    required this.riskLevel,
+    required this.riskFactors,
+    required this.recommendation,
+  });
+
+  Color get color {
+    switch (riskLevel.toUpperCase()) {
+      case 'HIGH':   return Colors.redAccent;
+      case 'MEDIUM': return Colors.orangeAccent;
+      default:       return Colors.greenAccent;
+    }
+  }
+
+  String get reason => riskFactors.isNotEmpty ? riskFactors.first : 'Risk detected';
+}
+
+class _ClassroomData {
+  final String classId;
+  final String title;
+  final int totalStudents;
+  final int highRiskCount;
+  final int mediumRiskCount;
+
+  const _ClassroomData({
+    required this.classId,
+    required this.title,
+    required this.totalStudents,
+    required this.highRiskCount,
+    required this.mediumRiskCount,
+  });
+
+  String get overallRisk {
+    if (highRiskCount > 0)   return 'HIGH';
+    if (mediumRiskCount > 0) return 'MEDIUM';
+    return 'LOW';
+  }
+
+  Color get riskDotColor {
+    switch (overallRisk) {
+      case 'HIGH':   return Colors.redAccent;
+      case 'MEDIUM': return Colors.orangeAccent;
+      default:       return Colors.greenAccent;
+    }
+  }
+}
+
+class _AppNotification {
+  final String id;
+  final String title;
+  final String body;
+  final DateTime time;
+  bool read;
+
+  _AppNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.time,
+    required this.read,
+  });
+}
+
+// ── COLORS ────────────────────────────────────────────────────────────────────
+
+const _cardColors = [
+  Color(0xFF382128),
+  Color(0xFFA6768B),
+  Color(0xFFF4BFDB),
+];
+const _cardTextColors = [Colors.white, Colors.white, Colors.black];
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
 
 class TeacherDashboard extends StatefulWidget {
   const TeacherDashboard({super.key});
@@ -12,104 +101,30 @@ class TeacherDashboard extends StatefulWidget {
 }
 
 class _TeacherDashboardState extends State<TeacherDashboard> {
-  final String teacherName = "Rupali";
+  final _db   = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
   late PageController _pageController;
   double _currentPage = 0.0;
 
-  // ── DATA ────────────────────────────────────────────────────────────────────
+  bool   _loading      = true;
+  String? _error;
 
-  final List<Map<String, dynamic>> _riskyStudents = [
-    {
-      'name': 'Aryan Mehta',
-      'class': '12-B',
-      'risk': 'High',
-      'reason': 'Frequent absences',
-      'color': Colors.red,
-    },
-    {
-      'name': 'Priya Sharma',
-      'class': '10-A',
-      'risk': 'Medium',
-      'reason': 'Declining grades',
-      'color': Colors.orange,
-    },
-    {
-      'name': 'Rahul Nair',
-      'class': '9-C',
-      'risk': 'High',
-      'reason': 'Behavioural flags',
-      'color': Colors.red,
-    },
-  ];
+  String _teacherName  = '';
+  String _teacherId    = '';
 
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'title': 'New Alert',
-      'body': 'Aryan Mehta missed 3 consecutive classes.',
-      'time': '10 min ago',
-      'read': false,
-    },
-    {
-      'title': 'Grade Drop',
-      'body': "Priya Sharma's score dropped below 50%.",
-      'time': '1 hr ago',
-      'read': false,
-    },
-    {
-      'title': 'Report Ready',
-      'body': 'Weekly class report for 12-B is ready.',
-      'time': '3 hrs ago',
-      'read': true,
-    },
-    {
-      'title': 'Parent Message',
-      'body': "Rahul Nair's parent requested a meeting.",
-      'time': 'Yesterday',
-      'read': true,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _classrooms = [
-    {
-      'title': 'Class 12-B',
-      'subject': 'Science',
-      'semester': 'Semester II',
-      'std': 'STD 12th',
-      'participants': 24,
-      'color': const Color(0xFF382128),
-      'textColor': Colors.white,
-    },
-    {
-      'title': 'Class 10-A',
-      'subject': 'Mathematics',
-      'semester': 'Semester I',
-      'std': 'STD 10th',
-      'participants': 30,
-      'color': const Color(0xFFA6768B),
-      'textColor': Colors.white,
-    },
-    {
-      'title': 'Class 9-C',
-      'subject': 'English',
-      'semester': 'Semester II',
-      'std': 'STD 9th',
-      'participants': 28,
-      'color': const Color(0xFFF4BFDB),
-      'textColor': Colors.black,
-    },
-  ];
-
-  // ── LIFECYCLE ───────────────────────────────────────────────────────────────
+  List<_ClassroomData>   _classrooms    = [];
+  List<_RiskyStudent>    _riskyStudents = [];
+  List<_AppNotification> _notifications = [];
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.7, initialPage: 0);
     _pageController.addListener(() {
-      setState(() {
-        _currentPage = _pageController.page!;
-      });
+      setState(() => _currentPage = _pageController.page ?? 0.0);
     });
+    _loadDashboard();
   }
 
   @override
@@ -118,221 +133,360 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     super.dispose();
   }
 
-  // ── NOTIFICATION PANEL ──────────────────────────────────────────────────────
+  // ── DATA LOADING ──────────────────────────────────────────────────────────
+
+  Future<void> _loadDashboard() async {
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) throw Exception('Not logged in');
+
+      final userDoc = await _db.collection('users').doc(uid).get();
+      if (!userDoc.exists) throw Exception('Teacher profile not found');
+
+      final userData = userDoc.data()!;
+      _teacherName = userData['name'] as String? ?? 'Teacher';
+      _teacherId   = uid;
+
+      // 1) Classrooms
+      final classroomsSnap = await _db.collection('classrooms').get();
+
+      final Map<String, List<String>> classStudents = {};
+      for (final doc in classroomsSnap.docs) {
+        final ids = List<String>.from(
+            (doc.data()['studentIds'] as List<dynamic>?) ?? []);
+        classStudents[doc.id] = ids;
+      }
+
+      final allStudentIds = classStudents.values
+          .expand((ids) => ids)
+          .toSet()
+          .toList();
+
+      // 2) Predictions — NO orderBy to avoid composite index requirement
+      //    Sort in Dart instead
+      final Map<String, String> studentRisk    = {};
+      final Map<String, _RiskyStudent> riskMap = {};
+
+      if (allStudentIds.isNotEmpty) {
+        final chunks = _chunk(allStudentIds, 30);
+        for (final chunk in chunks) {
+          final predSnap = await _db
+              .collection('predictions')
+              .where('studentId', whereIn: chunk)
+              .get(); // ← no orderBy here
+
+          // Sort by timestamp descending in Dart
+          final docs = predSnap.docs.toList()
+            ..sort((a, b) {
+              final tA = (a.data()['timestamp'] as Timestamp?)
+                  ?.millisecondsSinceEpoch ?? 0;
+              final tB = (b.data()['timestamp'] as Timestamp?)
+                  ?.millisecondsSinceEpoch ?? 0;
+              return tB.compareTo(tA);
+            });
+
+          for (final doc in docs) {
+            final data    = doc.data();
+            final sid     = data['studentId']   as String? ?? '';
+            final risk    = (data['risk_level'] as String? ?? '').toUpperCase();
+            final name    = data['studentName'] as String? ?? 'Unknown';
+            final factors = List<String>.from(
+                (data['risk_factors'] as List<dynamic>?) ?? []);
+            final rec     = data['recommendation'] as String? ?? '';
+
+            // Only keep latest per student (first after sort)
+            if (!studentRisk.containsKey(sid)) {
+              studentRisk[sid] = risk;
+
+              final classId = classStudents.entries
+                  .firstWhere(
+                    (e) => e.value.contains(sid),
+                orElse: () => const MapEntry('', []),
+              )
+                  .key;
+
+              if (risk == 'HIGH' || risk == 'MEDIUM') {
+                riskMap[sid] = _RiskyStudent(
+                  studentId:      sid,
+                  name:           name,
+                  classId:        classId,
+                  riskLevel:      risk,
+                  riskFactors:    factors,
+                  recommendation: rec,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // 3) Classroom summaries
+      final List<_ClassroomData> classrooms = [];
+      for (final entry in classStudents.entries) {
+        final classId    = entry.key;
+        final studentIds = entry.value;
+        final highCount  = studentIds.where((s) => studentRisk[s] == 'HIGH').length;
+        final medCount   = studentIds.where((s) => studentRisk[s] == 'MEDIUM').length;
+
+        classrooms.add(_ClassroomData(
+          classId:         classId,
+          title:           'Class $classId',
+          totalStudents:   studentIds.length,
+          highRiskCount:   highCount,
+          mediumRiskCount: medCount,
+        ));
+      }
+
+      classrooms.sort((a, b) {
+        const order = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2};
+        return (order[a.overallRisk] ?? 3).compareTo(order[b.overallRisk] ?? 3);
+      });
+
+      // 4) Risky students list
+      final riskyList = riskMap.values.toList()
+        ..sort((a, b) {
+          const order = {'HIGH': 0, 'MEDIUM': 1};
+          return (order[a.riskLevel] ?? 2).compareTo(order[b.riskLevel] ?? 2);
+        });
+
+      // 5) Notifications
+      final List<_AppNotification> notifications = [];
+      for (final s in riskyList.where((s) => s.riskLevel == 'HIGH')) {
+        notifications.add(_AppNotification(
+          id:    s.studentId,
+          title: '⚠️ High Risk Alert',
+          body:  '${s.name} has been flagged as HIGH risk. ${s.reason}',
+          time:  DateTime.now(),
+          read:  false,
+        ));
+      }
+      for (final s in riskyList.where((s) => s.riskLevel == 'MEDIUM')) {
+        notifications.add(_AppNotification(
+          id:    '${s.studentId}_med',
+          title: 'Medium Risk',
+          body:  '${s.name} is at medium risk. Monitor closely.',
+          time:  DateTime.now().subtract(const Duration(hours: 1)),
+          read:  false,
+        ));
+      }
+
+      setState(() {
+        _classrooms    = classrooms;
+        _riskyStudents = riskyList;
+        _notifications = notifications;
+        _loading       = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error   = 'Failed to load dashboard: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  List<List<T>> _chunk<T>(List<T> list, int size) {
+    final chunks = <List<T>>[];
+    for (var i = 0; i < list.length; i += size) {
+      chunks.add(list.sublist(
+          i, i + size > list.length ? list.length : i + size));
+    }
+    return chunks;
+  }
+
+  // ── NOTIFICATIONS ─────────────────────────────────────────────────────────
 
   void _openNotifications() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final unread = _notifications.where((n) => !n['read']).length;
-            return DraggableScrollableSheet(
-              initialChildSize: 0.6,
-              maxChildSize: 0.9,
-              minChildSize: 0.4,
-              builder: (_, scrollController) {
-                return Container(
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF3B2028),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                  ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 12),
+      builder: (_) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final unread = _notifications.where((n) => !n.read).length;
+          return DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            maxChildSize:     0.9,
+            minChildSize:     0.4,
+            builder: (_, scrollController) => Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF3B2028),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.white30,
+                        borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(children: [
+                    const Text('Notifications',
+                        style: TextStyle(color: Colors.white, fontSize: 22,
+                            fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                    if (unread > 0) ...[
+                      const SizedBox(width: 10),
                       Container(
-                        width: 40,
-                        height: 4,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.white30,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            const Text(
-                              'Notifications',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
+                            color: const Color(0xFFE9C2D7),
+                            borderRadius: BorderRadius.circular(12)),
+                        child: Text('$unread new',
+                            style: const TextStyle(fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                fontFamily: 'Pridi',
-                              ),
-                            ),
-                            if (unread > 0) ...[
-                              const SizedBox(width: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE9C2D7),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '$unread new',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF512D38),
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const Spacer(),
-                            if (unread > 0)
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    for (var n in _notifications) {
-                                      n['read'] = true;
-                                    }
-                                  });
-                                  setSheetState(() {});
-                                },
-                                child: const Text(
-                                  'Mark all read',
-                                  style: TextStyle(
-                                    color: Color(0xFFE9C2D7),
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _notifications.length,
-                          itemBuilder: (_, i) {
-                            final n = _notifications[i];
-                            return GestureDetector(
-                              onTap: () {
-                                setState(() => _notifications[i]['read'] = true);
-                                setSheetState(() {});
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                decoration: BoxDecoration(
-                                  color: n['read']
-                                      ? const Color(0xFF4A3439)
-                                      : const Color(0xFF6B3F50),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: n['read']
-                                      ? null
-                                      : Border.all(
-                                      color: const Color(0xFFE9C2D7),
-                                      width: 1),
-                                ),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: n['read']
-                                        ? Colors.white12
-                                        : const Color(0xFFE9C2D7),
-                                    child: Icon(
-                                      n['read']
-                                          ? Icons.notifications_none
-                                          : Icons.notifications_active,
-                                      color: n['read']
-                                          ? Colors.white54
-                                          : const Color(0xFF512D38),
-                                      size: 20,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    n['title'],
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: n['read']
-                                          ? FontWeight.normal
-                                          : FontWeight.bold,
-                                      fontFamily: 'Pridi',
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        n['body'],
-                                        style: const TextStyle(
-                                            color: Colors.white70, fontSize: 12),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        n['time'],
-                                        style: const TextStyle(
-                                            color: Colors.white38, fontSize: 11),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                color: Color(0xFF512D38))),
                       ),
                     ],
+                    const Spacer(),
+                    if (unread > 0)
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            for (var n in _notifications) n.read = true;
+                          });
+                          setSheetState(() {});
+                        },
+                        child: const Text('Mark all read',
+                            style: TextStyle(
+                                color: Color(0xFFE9C2D7), fontSize: 13)),
+                      ),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _notifications.isEmpty
+                      ? const Center(child: Text('No notifications',
+                      style: TextStyle(color: Colors.white38,
+                          fontFamily: 'Pridi')))
+                      : ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _notifications.length,
+                    itemBuilder: (_, i) {
+                      final n = _notifications[i];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _notifications[i].read = true);
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: n.read
+                                ? const Color(0xFF4A3439)
+                                : const Color(0xFF6B3F50),
+                            borderRadius: BorderRadius.circular(14),
+                            border: n.read
+                                ? null
+                                : Border.all(
+                                color: const Color(0xFFE9C2D7),
+                                width: 1),
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: n.read
+                                  ? Colors.white12
+                                  : const Color(0xFFE9C2D7),
+                              child: Icon(
+                                n.read
+                                    ? Icons.notifications_none
+                                    : Icons.notifications_active,
+                                color: n.read
+                                    ? Colors.white54
+                                    : const Color(0xFF512D38),
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(n.title,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: n.read
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
+                                  fontFamily: 'Pridi',
+                                  fontSize: 14,
+                                )),
+                            subtitle: Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                Text(n.body,
+                                    style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12)),
+                                const SizedBox(height: 4),
+                                Text(_timeAgo(n.time),
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            );
-          },
-        );
-      },
+                ),
+              ]),
+            ),
+          );
+        },
+      ),
     );
   }
 
-  // ── PROFILE SHEET ───────────────────────────────────────────────────────────
-
-  void _openProfile() {
-    Get.toNamed(AppRoutes.TEACHER_PROFILE, arguments: {'name': teacherName});
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours   < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
-  // ── RISKY STUDENT DETAIL ────────────────────────────────────────────────────
+  // ── PROFILE ───────────────────────────────────────────────────────────────
 
-  void _showRiskyStudentDetail(Map<String, dynamic> student) {
+  void _openProfile() {
+    Get.toNamed(AppRoutes.TEACHER_PROFILE,
+        arguments: {'name': _teacherName});
+  }
+
+  // ── RISKY STUDENT DETAIL ──────────────────────────────────────────────────
+
+  void _showRiskyStudentDetail(_RiskyStudent student) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF3B2028),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: student['color'].withOpacity(0.2),
-              child: Icon(Icons.person, color: student['color'], size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                student['name'],
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontFamily: 'Pridi',
-                ),
-              ),
-            ),
-          ],
-        ),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: student.color.withOpacity(0.2),
+            child: Icon(Icons.person, color: student.color, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(student.name,
+              style: const TextStyle(color: Colors.white,
+                  fontSize: 17, fontFamily: 'Pridi'))),
+        ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _detailRow('Class', student['class']),
+            _detailRow('Class',      'Class ${student.classId}'),
             const SizedBox(height: 8),
-            _detailRow('Risk Level', student['risk'], valueColor: student['color']),
+            _detailRow('Risk Level', student.riskLevel,
+                valueColor: student.color),
             const SizedBox(height: 8),
-            _detailRow('Reason', student['reason']),
+            _detailRow('Reason',     student.reason),
+            if (student.recommendation.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _detailRow('Suggestion', student.recommendation),
+            ],
           ],
         ),
         actions: [
@@ -342,14 +496,26 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 style: TextStyle(color: Color(0xFFE9C2D7))),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              Get.toNamed(AppRoutes.STUDENT_REPORT, arguments: {
+                'name':        student.name,
+                'studentId':   student.studentId,
+                'firestoreId': student.studentId,
+                'standard':    '',
+                'phone':       '',
+                'className':   'Class ${student.classId}',
+                'subject':     '',
+                'riskLevel':   _riskLevelString(student.riskLevel),
+              });
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFE9C2D7),
               foregroundColor: const Color(0xFF512D38),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('View Profile',
+            child: const Text('View Report',
                 style: TextStyle(fontFamily: 'Pridi')),
           ),
         ],
@@ -358,34 +524,59 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   }
 
   Widget _detailRow(String label, String value, {Color? valueColor}) {
-    return Row(
-      children: [
-        Flexible(
-          child: Text(
-            '$label: ',
-            style: const TextStyle(color: Colors.white54, fontSize: 14),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+    return Row(children: [
+      Flexible(child: Text('$label: ',
+          style: const TextStyle(color: Colors.white54, fontSize: 14))),
+      Expanded(child: Text(value,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
               color: valueColor ?? Colors.white,
               fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
+              fontWeight: FontWeight.bold))),
+    ]);
   }
 
-  // ── BUILD ───────────────────────────────────────────────────────────────────
+  // ── BUILD ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _notifications.where((n) => !n['read']).length;
+    final unreadCount = _notifications.where((n) => !n.read).length;
+
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF512D38),
+        body: Center(
+            child: CircularProgressIndicator(color: Color(0xFFE9C2D7))),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF512D38),
+        body: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.error_outline,
+                color: Colors.redAccent, size: 48),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(_error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white70, fontFamily: 'Pridi')),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadDashboard,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE9C2D7)),
+              child: const Text('Retry',
+                  style: TextStyle(color: Color(0xFF512D38))),
+            ),
+          ]),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF512D38),
@@ -400,38 +591,33 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               const SizedBox(height: 30),
               _buildAttentionSection(),
               const SizedBox(height: 40),
-              const Text(
-                'My Classrooms',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Pridi',
-                ),
-              ),
+              const Text('My Classrooms',
+                  style: TextStyle(color: Colors.white, fontSize: 26,
+                      fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
               const SizedBox(height: 20),
               Expanded(
-                child: PageView.builder(
+                child: _classrooms.isEmpty
+                    ? const Center(child: Text('No classrooms found.',
+                    style: TextStyle(color: Colors.white38,
+                        fontFamily: 'Pridi')))
+                    : PageView.builder(
                   controller: _pageController,
                   clipBehavior: Clip.none,
                   itemCount: _classrooms.length,
                   itemBuilder: (context, index) {
-                    double relativePosition = index - _currentPage;
-                    double scale =
-                    (1 - (relativePosition.abs() * 0.2)).clamp(0.8, 1.0);
-                    double opacity =
-                    (1 - (relativePosition.abs() * 0.5)).clamp(0.5, 1.0);
+                    final rel     = index - _currentPage;
+                    final scale   = (1 - (rel.abs() * 0.2)).clamp(0.8, 1.0);
+                    final opacity = (1 - (rel.abs() * 0.5)).clamp(0.5, 1.0);
                     return Transform.scale(
                       scale: scale,
                       child: Opacity(
-                        opacity: opacity,
-                        child: _buildClassCard(index),
-                      ),
+                          opacity: opacity,
+                          child: _buildClassCard(index)),
                     );
                   },
                 ),
               ),
-              const SizedBox(height: 20)
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -439,277 +625,230 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     );
   }
 
-  // ── HEADER ──────────────────────────────────────────────────────────────────
+  // ── HEADER ────────────────────────────────────────────────────────────────
 
   Widget _buildHeader(int unreadCount) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
-          child: Text(
-            'Welcome $teacherName!',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Pridi',
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text('Welcome $_teacherName!',
+              style: const TextStyle(color: Colors.white, fontSize: 28,
+                  fontWeight: FontWeight.bold, fontFamily: 'Pridi'),
+              overflow: TextOverflow.ellipsis),
         ),
-        Row(
-          children: [
-            // Notification bell with badge
-            GestureDetector(
-              onTap: _openNotifications,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Image.asset(
-                    'assets/imagesfor4see/mingcute_notification-fill.png',
-                    height: 24,
-                    color: Colors.white,
+        Row(children: [
+          GestureDetector(
+            onTap: _openNotifications,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Image.asset(
+                  'assets/imagesfor4see/mingcute_notification-fill.png',
+                  height: 24, color: Colors.white),
+              if (unreadCount > 0)
+                Positioned(
+                  top: -4, right: -4,
+                  child: Container(
+                    width: 14, height: 14,
+                    decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle),
+                    child: Center(child: Text('$unreadCount',
+                        style: const TextStyle(fontSize: 8,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold))),
                   ),
-                  if (unreadCount > 0)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        width: 14,
-                        height: 14,
-                        decoration: const BoxDecoration(
-                          color: Colors.redAccent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$unreadCount',
-                            style: const TextStyle(
-                                fontSize: 8,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 15),
-            // Profile icon
-            GestureDetector(
-              onTap: _openProfile,
-              child: Image.asset(
+                ),
+            ]),
+          ),
+          const SizedBox(width: 15),
+          GestureDetector(
+            onTap: _openProfile,
+            child: Image.asset(
                 'assets/imagesfor4see/iconamoon_profile-fill.png',
-                height: 24,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
+                height: 24, color: Colors.white),
+          ),
+        ]),
       ],
     );
   }
 
-  // ── ATTENTION SECTION ───────────────────────────────────────────────────────
+  // ── ATTENTION SECTION ─────────────────────────────────────────────────────
 
   Widget _buildAttentionSection() {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'ATTENTION',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              height: 160,
-              decoration: BoxDecoration(
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('ATTENTION',
+              style: TextStyle(color: Colors.white70, fontSize: 22,
+                  fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            height: 160,
+            decoration: BoxDecoration(
                 color: const Color(0xFFA6768B),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: _riskyStudents.isEmpty
-                  ? const Center(
-                child: Text(
-                  'No risky students at the moment',
-                  style: TextStyle(color: Colors.white70, fontSize: 15),
-                ),
-              )
-                  : ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 16),
-                itemCount: _riskyStudents.length,
-                itemBuilder: (_, i) {
-                  final s = _riskyStudents[i];
-                  return GestureDetector(
-                    onTap: () => _showRiskyStudentDetail(s),
-                    child: Container(
-                      width: 130,
-                      margin: const EdgeInsets.only(right: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B2028),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: s['color'].withOpacity(0.6),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: s['color'],
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                s['risk'],
-                                style: TextStyle(
-                                  color: s['color'],
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            s['name'],
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Pridi',
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            s['reason'],
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 11,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
+                borderRadius: BorderRadius.circular(15)),
+            child: _riskyStudents.isEmpty
+                ? const Center(child: Text(
+                'No risky students at the moment',
+                style: TextStyle(
+                    color: Colors.white70, fontSize: 15)))
+                : ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 16),
+              itemCount: _riskyStudents.length,
+              itemBuilder: (_, i) {
+                final s = _riskyStudents[i];
+                return GestureDetector(
+                  onTap: () => _showRiskyStudentDetail(s),
+                  child: Container(
+                    width: 130,
+                    margin: const EdgeInsets.only(right: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B2028),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: s.color.withOpacity(0.6),
+                          width: 1.5),
                     ),
-                  );
-                },
-              ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(children: [
+                          Container(
+                              width: 8, height: 8,
+                              decoration: BoxDecoration(
+                                  color: s.color,
+                                  shape: BoxShape.circle)),
+                          const SizedBox(width: 5),
+                          Text(s.riskLevel,
+                              style: TextStyle(
+                                  color: s.color,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold)),
+                        ]),
+                        Text(s.name,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Pridi'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                        Text(s.reason,
+                            style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
-        Positioned(
-          top: -10,
-          right: -15,
-          child: Image.asset(
-            'assets/imagesfor4see/Curly Arrow.png',
-            height: 60,
           ),
+        ]),
+        Positioned(
+          top: -10, right: -15,
+          child: Image.asset(
+              'assets/imagesfor4see/Curly Arrow.png', height: 60),
         ),
       ],
     );
   }
 
-  // ── CLASS CARD ──────────────────────────────────────────────────────────────
+  // ── CLASS CARD ────────────────────────────────────────────────────────────
 
   Widget _buildClassCard(int index) {
-    final classroom = _classrooms[index];
+    final classroom  = _classrooms[index];
+    final colorIndex = index % _cardColors.length;
+    final bgColor    = _cardColors[colorIndex];
+    final textColor  = _cardTextColors[colorIndex];
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ClassroomPage(
-              classTitle: classroom['title'],
-              subject: classroom['subject'],
-              semester: classroom['semester'],
-              std: classroom['std'],
-              participants: classroom['participants'],
-            ),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ClassroomPage(
+            classTitle:   classroom.title,
+            subject:      '',
+            semester:     'Semester I',
+            std:          '',
+            participants: classroom.totalStudents,
           ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: classroom['color'],
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    classroom['title'],
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pridi',
-                      color: classroom['textColor'],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    classroom['subject'],
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: classroom['textColor'].withOpacity(0.7),
-                      fontFamily: 'Pridi',
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${classroom['participants']} students',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: classroom['textColor'].withOpacity(0.55),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              bottom: 25,
-              right: 25,
-              child: CircleAvatar(
-                radius: 8,
-                backgroundColor: Colors.greenAccent,
-              ),
-            ),
-          ],
         ),
       ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 10))],
+        ),
+        child: Stack(children: [
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(classroom.title,
+                    style: TextStyle(fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Pridi',
+                        color: textColor)),
+                const SizedBox(height: 6),
+                Text('${classroom.totalStudents} students',
+                    style: TextStyle(fontSize: 14,
+                        color: textColor.withOpacity(0.7),
+                        fontFamily: 'Pridi')),
+                const SizedBox(height: 4),
+                Text(
+                  classroom.highRiskCount > 0
+                      ? '${classroom.highRiskCount} high risk student${classroom.highRiskCount > 1 ? 's' : ''}'
+                      : classroom.mediumRiskCount > 0
+                      ? '${classroom.mediumRiskCount} medium risk student${classroom.mediumRiskCount > 1 ? 's' : ''}'
+                      : 'All students on track',
+                  style: TextStyle(
+                      fontSize: 12, color: classroom.riskDotColor),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 20, right: 20,
+            child: Container(
+              width: 14, height: 14,
+              decoration: BoxDecoration(
+                color: classroom.riskDotColor,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                    color: classroom.riskDotColor.withOpacity(0.5),
+                    blurRadius: 6,
+                    spreadRadius: 1)],
+              ),
+            ),
+          ),
+        ]),
+      ),
     );
+  }
+
+  // ── HELPER ────────────────────────────────────────────────────────────────
+
+  String _riskLevelString(String level) {
+    switch (level.toUpperCase()) {
+      case 'HIGH':   return 'high';
+      case 'MEDIUM': return 'medium';
+      case 'LOW':    return 'low';
+      default:       return 'none';
+    }
   }
 }
