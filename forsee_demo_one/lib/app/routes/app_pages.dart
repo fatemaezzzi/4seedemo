@@ -32,7 +32,8 @@ import 'package:forsee_demo_one/pages/teacher_only/view_past_semester_page.dart'
 
 // ── Student pages ─────────────────────────────────────────────────────────────
 import 'package:forsee_demo_one/pages/student/student_dashboard.dart';
-import 'package:forsee_demo_one/pages/profile/student_profile_page.dart';
+import 'package:forsee_demo_one/pages/profile/student_profile_page.dart';          // student's own profile
+import 'package:forsee_demo_one/pages/student/student_profile.dart' as TeacherView; // teacher's view of a student
 import 'package:forsee_demo_one/pages/settings/student_settings_page.dart';
 import 'package:forsee_demo_one/pages/student/report_page.dart';
 import 'package:forsee_demo_one/pages/student/student_database_page.dart';
@@ -118,8 +119,6 @@ class AppPages {
       page: () => const CreateMarksEntryPage(),
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
-
-    // ── FIXED: pulls args from Get.arguments instead of const constructor ─────
     GetPage(
       name: AppRoutes.REVIEW_SUBMIT,
       page: () {
@@ -153,8 +152,6 @@ class AppPages {
       },
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
-    // ─────────────────────────────────────────────────────────────────────────
-
     GetPage(
       name: AppRoutes.TEACHER_ANALYSIS,
       page: () => const TeacherAnalysisPage(),
@@ -187,24 +184,31 @@ class AppPages {
       page: () => const StudentDashboard(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
-
-    // ── FIXED: pulls StudentModel from Get.arguments ──────────────────────────
+    // Student's own profile (no args needed)
     GetPage(
       name: AppRoutes.STUDENT_PROFILE,
       page: () => const StudentProfilePage(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
-    // ─────────────────────────────────────────────────────────────────────────
-
+    // Teacher's view of a student (passes StudentModel via arguments)
+    GetPage(
+      name: AppRoutes.STUDENT_PROFILE_TEACHER_VIEW,
+      page: () {
+        final student = Get.arguments as StudentModel;
+        return TeacherView.StudentProfilePage(student: student);
+      },
+      middlewares: [AuthMiddleware(allowed: ['teacher'])],
+    ),
     GetPage(
       name: AppRoutes.STUDENT_SETTINGS,
       page: () => const StudentSettingsPage(),
       middlewares: [AuthMiddleware(allowed: ['student'])],
     ),
+    // Accessible by both student (own report) and teacher (viewing student report)
     GetPage(
       name: AppRoutes.STUDENT_REPORT,
       page: () => const ReportPage(),
-      middlewares: [AuthMiddleware(allowed: ['student'])],
+      middlewares: [AuthMiddleware(allowed: ['student', 'teacher'])],
     ),
     GetPage(
       name: AppRoutes.STUDENT_DATABASE,

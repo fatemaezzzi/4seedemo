@@ -29,11 +29,12 @@ abstract class AppRoutes {
   static const VIEW_PAST_SEMESTER     = '/view-past-semester';
 
   // ── Student ──────────────────────────────────────────────────────────────────
-  static const STUDENT_DASHBOARD = '/student-dashboard';
-  static const STUDENT_PROFILE   = '/student-profile';
-  static const STUDENT_SETTINGS  = '/student-settings';
-  static const STUDENT_REPORT    = '/student-report';
-  static const STUDENT_DATABASE  = '/student-database';
+  static const STUDENT_DASHBOARD            = '/student-dashboard';
+  static const STUDENT_PROFILE              = '/student-profile';
+  static const STUDENT_PROFILE_TEACHER_VIEW = '/student-profile-teacher-view'; // ← added
+  static const STUDENT_SETTINGS             = '/student-settings';
+  static const STUDENT_REPORT               = '/student-report';
+  static const STUDENT_DATABASE             = '/student-database';
 
   // ── Shared (all roles) ───────────────────────────────────────────────────────
   static const CHANGE_PASSWORD  = '/change-password';
