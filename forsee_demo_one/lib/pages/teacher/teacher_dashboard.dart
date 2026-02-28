@@ -37,7 +37,7 @@ class _RiskyStudent {
 }
 
 class _ClassroomData {
-  final String classId;
+  final String classId;   // ← Firestore doc ID = the classroom code students type
   final String title;
   final int totalStudents;
   final int highRiskCount;
@@ -164,8 +164,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
           .toSet()
           .toList();
 
-      // 2) Predictions — NO orderBy to avoid composite index requirement
-      //    Sort in Dart instead
+      // 2) Predictions — sorted in Dart to avoid composite index requirement
       final Map<String, String> studentRisk    = {};
       final Map<String, _RiskyStudent> riskMap = {};
 
@@ -175,9 +174,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
           final predSnap = await _db
               .collection('predictions')
               .where('studentId', whereIn: chunk)
-              .get(); // ← no orderBy here
+              .get();
 
-          // Sort by timestamp descending in Dart
           final docs = predSnap.docs.toList()
             ..sort((a, b) {
               final tA = (a.data()['timestamp'] as Timestamp?)
@@ -196,7 +194,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 (data['risk_factors'] as List<dynamic>?) ?? []);
             final rec     = data['recommendation'] as String? ?? '';
 
-            // Only keep latest per student (first after sort)
             if (!studentRisk.containsKey(sid)) {
               studentRisk[sid] = risk;
 
@@ -231,8 +228,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         final medCount   = studentIds.where((s) => studentRisk[s] == 'MEDIUM').length;
 
         classrooms.add(_ClassroomData(
-          classId:         classId,
-          title:           'Class $classId',
+          classId:         classId,          // ← raw Firestore doc ID
+          title:           'Class $classId', // ← display name
           totalStudents:   studentIds.length,
           highRiskCount:   highCount,
           mediumRiskCount: medCount,
@@ -411,8 +408,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                   fontSize: 14,
                                 )),
                             subtitle: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(n.body,
                                     style: const TextStyle(
@@ -692,8 +688,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
             child: _riskyStudents.isEmpty
                 ? const Center(child: Text(
                 'No risky students at the moment',
-                style: TextStyle(
-                    color: Colors.white70, fontSize: 15)))
+                style: TextStyle(color: Colors.white70, fontSize: 15)))
                 : ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
@@ -716,25 +711,21 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(children: [
-                          Container(
-                              width: 8, height: 8,
+                          Container(width: 8, height: 8,
                               decoration: BoxDecoration(
                                   color: s.color,
                                   shape: BoxShape.circle)),
                           const SizedBox(width: 5),
                           Text(s.riskLevel,
-                              style: TextStyle(
-                                  color: s.color,
+                              style: TextStyle(color: s.color,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold)),
                         ]),
                         Text(s.name,
-                            style: const TextStyle(
-                                color: Colors.white,
+                            style: const TextStyle(color: Colors.white,
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
                                 fontFamily: 'Pridi'),
@@ -742,8 +733,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                             overflow: TextOverflow.ellipsis),
                         Text(s.reason,
                             style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11),
+                                color: Colors.white54, fontSize: 11),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis),
                       ],
@@ -777,6 +767,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         MaterialPageRoute(
           builder: (_) => ClassroomPage(
             classTitle:   classroom.title,
+            classroomId:  classroom.classId,  // ← THE FIX: was missing before
             subject:      '',
             semester:     'Semester I',
             std:          '',

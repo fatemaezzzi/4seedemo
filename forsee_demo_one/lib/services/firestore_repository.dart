@@ -9,20 +9,24 @@ import 'package:forsee_demo_one/model/student_model.dart';
 class FirestoreRepository {
   final _db = FirebaseFirestore.instance;
 
-  // ── STUDENTS BY CLASS (replaces hardcoded list in classroom_page.dart) ────
+  // ── STUDENTS BY CLASS ─────────────────────────────────────────────────────
+  // ✅ No .orderBy() here — sorting done in Dart to avoid composite index.
 
   Stream<List<StudentModel>> streamStudentsByClass(String classroomId) {
     return _db
         .collection('students')
         .where('classroomId', isEqualTo: classroomId)
-        .orderBy('name')
         .snapshots()
-        .map((snap) => snap.docs
-        .map((doc) => StudentModel.fromFirestore(doc.data(), doc.id))
-        .toList());
+        .map((snap) {
+      final list = snap.docs
+          .map((doc) => StudentModel.fromFirestore(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => a.name.compareTo(b.name));
+      return list;
+    });
   }
 
-  // ── SINGLE STUDENT (real-time — for teacher's student profile view) ───────
+  // ── SINGLE STUDENT ────────────────────────────────────────────────────────
 
   Stream<StudentModel?> streamStudent(String firestoreId) {
     return _db
@@ -34,7 +38,7 @@ class FirestoreRepository {
         : null);
   }
 
-  // ── HIGH RISK STUDENTS (for alerts page) ──────────────────────────────────
+  // ── HIGH RISK STUDENTS ────────────────────────────────────────────────────
 
   Stream<List<StudentModel>> streamHighRiskStudents({String? classroomId}) {
     Query<Map<String, dynamic>> q = _db
@@ -50,7 +54,7 @@ class FirestoreRepository {
         .toList());
   }
 
-  // ── MARKS HISTORY (for student report page) ───────────────────────────────
+  // ── MARKS HISTORY ─────────────────────────────────────────────────────────
 
   Stream<List<Map<String, dynamic>>> streamStudentMarks(String firestoreId) {
     return _db
@@ -62,7 +66,7 @@ class FirestoreRepository {
         .map((snap) => snap.docs.map((doc) => doc.data()).toList());
   }
 
-  // ── BEHAVIOUR INCIDENTS (for student profile page) ────────────────────────
+  // ── BEHAVIOUR INCIDENTS ───────────────────────────────────────────────────
 
   Stream<List<Map<String, dynamic>>> streamIncidents(String firestoreId) {
     return _db
@@ -86,7 +90,7 @@ class FirestoreRepository {
         .map((snap) => snap.docs.map((doc) => doc.data()).toList());
   }
 
-  // ── RISK LEVEL COUNTS (admin dashboard) ───────────────────────────────────
+  // ── RISK LEVEL COUNTS ─────────────────────────────────────────────────────
 
   Stream<Map<String, int>> streamRiskCounts() {
     return _db.collection('students').snapshots().map((snap) {
