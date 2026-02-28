@@ -1,10 +1,14 @@
 // lib/pages/student/student_profile.dart  (TEACHER VIEW)
 // =========================================================
-// CHANGES FROM ORIGINAL:
-//   • _suggestions is now loaded from Firestore predictions collection
-//   • Shows ML riskFactors + LLM recommendation as suggestion cards
-//   • Falls back to hardcoded suggestions only if no prediction exists yet
-//   • Everything else (UI, behaviour incidents, resources) unchanged
+// Teacher opens this from ClassroomPage by tapping a student.
+// NOT the same as lib/pages/profile/student_profile_page.dart (student's own profile).
+//
+// BACKEND WIRED:
+//  • firestoreId passed through all navigation args
+//  • BehaviourIncident returned from BehaviourIncidentPage → updates local state
+//  • Incident count badge, recent incidents list, high-risk banner live-update
+//  • AI Suggestions derived from logged incidents
+//  • All report tabs pass firestoreId to ReportPage
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -25,163 +29,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   final List<BehaviourIncident> _incidents = [];
   StudentModel get _s => widget.student;
 
-  // ── ML prediction data ─────────────────────────────────────────────────
-  bool   _predictionLoading = true;
-  List<_Suggestion> _mlSuggestions = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPrediction();
-  }
-
-  Future<void> _loadPrediction() async {
-    if (_s.firestoreId.isEmpty) {
-      setState(() => _predictionLoading = false);
-      return;
-    }
-
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('predictions')
-          .where('studentId', isEqualTo: _s.firestoreId)
-          .orderBy('timestamp', descending: true)
-          .limit(1)
-          .get();
-
-      if (snap.docs.isEmpty) {
-        setState(() => _predictionLoading = false);
-        return;
-      }
-
-      final data      = snap.docs.first.data();
-      final riskLevel = data['risk_level']     as String? ?? '';
-      final rec       = data['recommendation'] as String? ?? '';
-
-      // risk_factors is stored as a list of "Key: Value" strings
-      final rawFactors = data['risk_factors'];
-      List<String> factors = [];
-      if (rawFactors is List) {
-        factors = rawFactors.map((e) => e.toString()).toList();
-      } else if (rawFactors is Map) {
-        factors = rawFactors.entries
-            .map((e) => '${e.key}: ${e.value}')
-            .toList();
-      }
-
-      final suggestions = <_Suggestion>[];
-
-      // Risk level card
-      if (riskLevel.isNotEmpty && riskLevel != 'UNKNOWN') {
-        final isHigh   = riskLevel == 'HIGH';
-        final isMedium = riskLevel == 'MEDIUM';
-        suggestions.add(_Suggestion(
-          icon:    isHigh ? Icons.warning_rounded : isMedium ? Icons.info_rounded : Icons.check_circle_outline,
-          text:    'ML model flagged this student as $riskLevel risk.',
-          isHigh:  isHigh,
-          isGood:  riskLevel == 'LOW',
-        ));
-      }
-
-      // Each risk factor becomes a suggestion
-      for (final factor in factors.take(4)) {
-        final key   = factor.split(':').first.trim();
-        final value = factor.contains(':') ? factor.split(':').last.trim() : '';
-        suggestions.add(_Suggestion(
-          icon:   _iconForFactor(key),
-          text:   value.isNotEmpty ? '$key — $value' : key,
-          isHigh: _isHighRiskFactor(key),
-        ));
-      }
-
-      // LLM recommendation lines
-      if (rec.isNotEmpty) {
-        final lines = rec
-            .split('\n')
-            .map((l) => l.trim())
-            .where((l) => l.isNotEmpty)
-            .take(2)
-            .toList();
-        for (final line in lines) {
-          suggestions.add(_Suggestion(
-            icon: Icons.lightbulb_outline,
-            text: line,
-          ));
-        }
-      }
-
-      // Always include the 3 default action suggestions
-      suggestions.addAll(_defaultSuggestions());
-
-      setState(() {
-        _mlSuggestions    = suggestions;
-        _predictionLoading = false;
-      });
-    } catch (e) {
-      debugPrint('StudentProfile prediction load error: $e');
-      setState(() => _predictionLoading = false);
-    }
-  }
-
-  IconData _iconForFactor(String key) {
-    final k = key.toLowerCase();
-    if (k.contains('grade') || k.contains('academic') || k.contains('performance'))
-      return Icons.school_outlined;
-    if (k.contains('absence') || k.contains('attendance'))
-      return Icons.calendar_today_outlined;
-    if (k.contains('mental') || k.contains('health'))
-      return Icons.favorite_border;
-    if (k.contains('behaviour') || k.contains('behavior'))
-      return Icons.psychology_outlined;
-    if (k.contains('failure'))
-      return Icons.assignment_late_outlined;
-    if (k.contains('financial') || k.contains('support'))
-      return Icons.account_balance_wallet_outlined;
-    return Icons.warning_amber_rounded;
-  }
-
-  bool _isHighRiskFactor(String key) {
-    final k = key.toLowerCase();
-    return k.contains('high') || k.contains('poor') || k.contains('multiple') ||
-        k.contains('critical') || k.contains('very');
-  }
-
-  List<_Suggestion> _defaultSuggestions() => [
-    _Suggestion(icon: Icons.people_alt_outlined,  text: 'Assign Peer Mentor'),
-    _Suggestion(icon: Icons.school_outlined,       text: 'Recommend Remedial Classes'),
-    _Suggestion(icon: Icons.family_restroom,       text: 'Schedule Parent Meeting'),
-  ];
-
-  // ── Behaviour-incident-aware extra suggestions ─────────────────────────
-  List<_Suggestion> get _incidentSuggestions {
-    final list = <_Suggestion>[];
-    final neg  = _incidents.where((i) => i.behaviourType == 'Negative').length;
-    final tags = _incidents.expand((i) => i.tags).toList();
-    if (neg >= 2)
-      list.add(_Suggestion(icon: Icons.warning_amber_rounded, text: '$neg negative incidents — counselling recommended', isHigh: true));
-    if (tags.contains('Aggressive'))
-      list.add(_Suggestion(icon: Icons.psychology_outlined, text: 'Aggression noted — refer to school counselor', isHigh: true));
-    if (tags.contains('No Homework'))
-      list.add(_Suggestion(icon: Icons.assignment_late_outlined, text: 'Repeated homework issues — check home environment'));
-    if (tags.contains('Distracted'))
-      list.add(_Suggestion(icon: Icons.visibility_off_outlined, text: 'Focus issues — consider seating change'));
-    if (_incidents.any((i) => i.behaviourType == 'Positive'))
-      list.add(_Suggestion(icon: Icons.star_outline, text: 'Positive behaviour noted — acknowledge in class', isGood: true));
-    return list;
-  }
-
-  List<_Suggestion> get _allSuggestions {
-    if (_predictionLoading) return _defaultSuggestions();
-    final combined = [
-      ..._incidentSuggestions,
-      ..._mlSuggestions.isNotEmpty ? _mlSuggestions : _defaultSuggestions(),
-    ];
-    // Deduplicate by text
-    final seen = <String>{};
-    return combined.where((s) => seen.add(s.text)).toList();
-  }
-
-  // ── Colours & helpers ──────────────────────────────────────────────────
   Color get _borderColor {
     switch (_s.riskLevel) {
       case RiskLevel.high:   return Colors.red;
@@ -195,6 +42,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       _s.riskLevel == RiskLevel.high ||
           _incidents.where((i) => i.behaviourType == 'Negative').length >= 2;
 
+  // firestoreId included so downstream pages write to correct Firestore doc
   Map<String, dynamic> get _args => {
     'name':        _s.name,
     'studentId':   _s.studentId,
@@ -223,10 +71,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   void _showResource(String type) {
     final data = {
-      'NGO':              {'title':'NGO Support',             'icon':Icons.handshake_outlined,              'color':Colors.tealAccent,   'details':['Pratham Education Foundation','CRY – Child Rights and You','Teach For India'],                                     'action':'Contact NGO'},
-      'Financial Support':{'title':'Financial Support',       'icon':Icons.account_balance_wallet_outlined, 'color':Colors.amberAccent,  'details':['PM Scholarship Scheme','National Means-cum-Merit Scholarship','State Government Scholarship'],                      'action':'Apply for Support'},
-      'Counseling':       {'title':'Counseling Services',     'icon':Icons.chat_bubble_outline,             'color':Colors.orangeAccent, 'details':['School Counselor – Ms. Priya','iCall Helpline: 9152987821','Vandrevala Foundation: 1860-2662-345'],                 'action':'Book Session'},
-      'Mental Health':    {'title':'Mental Health Resources', 'icon':Icons.favorite_border,                 'color':Colors.pinkAccent,   'details':['iCall: 9152987821','Vandrevala Foundation: 1860-2662-345','NIMHANS Helpline: 080-46110007'],                        'action':'Get Help'},
+      'NGO':              {'title':'NGO Support',             'icon':Icons.handshake_outlined,              'color':Colors.tealAccent,    'details':['Pratham Education Foundation','CRY – Child Rights and You','Teach For India'],                                        'action':'Contact NGO'},
+      'Financial Support':{'title':'Financial Support',       'icon':Icons.account_balance_wallet_outlined, 'color':Colors.amberAccent,   'details':['PM Scholarship Scheme','National Means-cum-Merit Scholarship','State Government Scholarship'],                         'action':'Apply for Support'},
+      'Counseling':       {'title':'Counseling Services',     'icon':Icons.chat_bubble_outline,             'color':Colors.orangeAccent,  'details':['School Counselor – Ms. Priya','iCall Helpline: 9152987821','Vandrevala Foundation: 1860-2662-345'],                    'action':'Book Session'},
+      'Mental Health':    {'title':'Mental Health Resources', 'icon':Icons.favorite_border,                 'color':Colors.pinkAccent,    'details':['iCall: 9152987821','Vandrevala Foundation: 1860-2662-345','NIMHANS Helpline: 080-46110007'],                           'action':'Get Help'},
     };
     final r = data[type]!;
     final c = r['color'] as Color;
@@ -260,6 +108,22 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
         ]),
       ),
     );
+  }
+
+  List<Map<String, dynamic>> get _suggestions {
+    final list = <Map<String, dynamic>>[
+      {'icon': Icons.people_alt_outlined, 'text': 'Assign Peer Mentor'},
+      {'icon': Icons.school_outlined,     'text': 'Recommend Remedial Classes'},
+      {'icon': Icons.family_restroom,     'text': 'Schedule Parent Meeting'},
+    ];
+    final neg  = _incidents.where((i) => i.behaviourType == 'Negative').length;
+    final tags = _incidents.expand((i) => i.tags).toList();
+    if (neg >= 2)                       list.add({'icon': Icons.warning_amber_rounded,   'text': '$neg negative incidents — counselling recommended', 'hi': true});
+    if (tags.contains('Aggressive'))    list.add({'icon': Icons.psychology_outlined,      'text': 'Aggression noted — refer to school counselor',       'hi': true});
+    if (tags.contains('No Homework'))   list.add({'icon': Icons.assignment_late_outlined, 'text': 'Repeated homework — check home environment'});
+    if (tags.contains('Distracted'))    list.add({'icon': Icons.visibility_off_outlined,  'text': 'Focus issues — consider seating change'});
+    if (_incidents.any((i) => i.behaviourType == 'Positive')) list.add({'icon': Icons.star_outline, 'text': 'Positive behaviour — acknowledge in class', 'pos': true});
+    return list;
   }
 
   @override
@@ -382,20 +246,19 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                     Text('HIGH RISK; ATTENTION NEEDED', style: TextStyle(fontWeight: FontWeight.bold, fontStyle: FontStyle.italic, color: Color(0xFF3B2F2F))),
                   ]),
                   const SizedBox(height: 6),
-                  const Text('• Attendance < 60%',              style: TextStyle(color: Color(0xFF3B2F2F))),
-                  const Text('• Math Scores Declined by 15%',   style: TextStyle(color: Color(0xFF3B2F2F))),
-                  const Text('• Behaviour - Low Focus',          style: TextStyle(color: Color(0xFF3B2F2F))),
+                  const Text('• Attendance < 60%', style: TextStyle(color: Color(0xFF3B2F2F))),
+                  const Text('• Math Scores Declined by 15%', style: TextStyle(color: Color(0xFF3B2F2F))),
+                  const Text('• Behaviour - Low Focus', style: TextStyle(color: Color(0xFF3B2F2F))),
                   if (_incidents.any((i) => i.tags.contains('Aggressive')))
                     const Text('• Aggression incident logged', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                   if (_incidents.where((i) => i.behaviourType == 'Negative').length >= 2)
-                    Text('• ${_incidents.where((i) => i.behaviourType == 'Negative').length} negative behaviour incidents',
-                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                    Text('• ${_incidents.where((i) => i.behaviourType == 'Negative').length} negative behaviour incidents', style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                 ]),
               ),
 
             const SizedBox(height: 25),
 
-            // AI SUGGESTIONS — now from ML prediction
+            // AI SUGGESTIONS
             Container(
               width: double.infinity, padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFA6768B), width: 2)),
@@ -405,25 +268,18 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   Row(children: List.generate(5, (i) => Icon(Icons.star, color: i < 4 ? Colors.orange : Colors.white30, size: 20))),
                 ]),
                 const SizedBox(height: 12),
-                if (_predictionLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(child: CircularProgressIndicator(color: Color(0xFFE9C2D7), strokeWidth: 2)),
-                  )
-                else
-                  ..._allSuggestions.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(children: [
-                      Icon(s.icon,
-                          color: s.isHigh ? Colors.orangeAccent : s.isGood ? Colors.greenAccent : const Color(0xFFF4BFDB),
-                          size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(s.text,
-                          style: TextStyle(
-                              color: s.isHigh ? Colors.orangeAccent : s.isGood ? Colors.greenAccent : Colors.white,
-                              fontSize: 14))),
-                    ]),
-                  )),
+                ..._suggestions.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(children: [
+                    Icon(s['icon'] as IconData,
+                        color: s['hi'] == true ? Colors.orangeAccent : s['pos'] == true ? Colors.greenAccent : const Color(0xFFF4BFDB), size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(s['text'] as String,
+                        style: TextStyle(
+                            color: s['hi'] == true ? Colors.orangeAccent : s['pos'] == true ? Colors.greenAccent : Colors.white,
+                            fontSize: 14))),
+                  ]),
+                )),
               ]),
             ),
 
@@ -463,20 +319,4 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       ),
     ),
   );
-}
-
-// ── Internal suggestion model ──────────────────────────────────────────────
-
-class _Suggestion {
-  final IconData icon;
-  final String   text;
-  final bool     isHigh;
-  final bool     isGood;
-
-  const _Suggestion({
-    required this.icon,
-    required this.text,
-    this.isHigh = false,
-    this.isGood = false,
-  });
 }

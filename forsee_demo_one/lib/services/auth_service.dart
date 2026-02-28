@@ -234,18 +234,24 @@ class AuthService {
   }) async {
     switch (role) {
       case UserRole.student:
+      // ── Auto-generate a unique, readable studentId ──────────────────────
+      // Format: {CLASSROOMID}-{4-digit counter} e.g. "12B-0043"
+      // Uses a Firestore transaction on the classroom counter doc so that
+      // concurrent sign-ups never produce duplicate IDs.
+        final studentId = await _generateStudentId(classroomId ?? 'GEN');
+
         await _db.collection('students').doc(uid).set({
-          'uid':        uid,
-          'name':       name,
-          'email':      email,
-          'studentId':  '',        // teacher can fill this in later
-          'className':  classroomId ?? '',
-          'classroomId':classroomId ?? '',
-          'standard':   '',
-          'phone':      '',
-          'riskLevel':  'none',
-          'photoUrl':   photoUrl ?? '',
-          'createdAt':  FieldValue.serverTimestamp(),
+          'uid':         uid,
+          'name':        name,
+          'email':       email,
+          'studentId':   studentId,   // ← now always populated at sign-up
+          'className':   classroomId ?? '',
+          'classroomId': classroomId ?? '',
+          'standard':    '',
+          'phone':       '',
+          'riskLevel':   'none',
+          'photoUrl':    photoUrl ?? '',
+          'createdAt':   FieldValue.serverTimestamp(),
           // Prediction inputs — null until data is saved by teacher
           'attendance': null,
           'behaviour':  null,
@@ -287,6 +293,29 @@ class AuthService {
         });
         break;
     }
+  }
+
+  // ── STUDENT ID GENERATOR ──────────────────────────────────────────────────
+  // Atomically increments a per-classroom counter and returns a formatted ID.
+  // e.g. classroomId "12B" → "12B-0001", "12B-0002", …
+  // Uses a Firestore transaction so concurrent sign-ups never collide.
+
+  Future<String> _generateStudentId(String classroomId) async {
+    final counterRef = _db
+        .collection('_counters')
+        .doc('classroom_${classroomId.toUpperCase()}');
+
+    final int nextCount = await _db.runTransaction<int>((txn) async {
+      final snap = await txn.get(counterRef);
+      final current = snap.exists ? (snap.data()!['count'] as int? ?? 0) : 0;
+      final next = current + 1;
+      txn.set(counterRef, {'count': next}, SetOptions(merge: true));
+      return next;
+    });
+
+    // Format: "12B-0043" — classroom prefix + zero-padded 4-digit counter
+    final prefix = classroomId.toUpperCase().replaceAll(' ', '');
+    return '$prefix-${nextCount.toString().padLeft(4, '0')}';
   }
 
   // ── SIGN OUT ───────────────────────────────────────────────────────────────

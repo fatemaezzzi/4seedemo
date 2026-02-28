@@ -3,7 +3,7 @@
 // BACKEND WIRED:
 //  • Student list → live Firestore stream via FirestoreRepository
 //  • Manual attendance Submit → PredictionService.saveAttendance() per student
-//  • Camera / CSV attendance  → marks all present, saves to Firebase
+//  • Camera / CSV attendance  → Camera marks all present; CSV picks file, previews, saves to Firebase
 //  • Upload Marks             → passes students list + firestoreIds to CreateMarksEntryPage
 //  • Search                   → live filter by name or studentId
 //  • Attendance badge         → shows present count after submit
@@ -15,6 +15,10 @@ import 'package:forsee_demo_one/pages/teacher/create_marks_entry_page.dart';
 import 'package:forsee_demo_one/pages/student/student_profile.dart';
 import 'package:forsee_demo_one/services/prediction_service.dart';
 import 'package:forsee_demo_one/services/firestore_repository.dart';
+import 'dart:io';
+import 'package:forsee_demo_one/services/csv_attendance_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ClassroomPage extends StatefulWidget {
   final String classTitle;
@@ -42,6 +46,7 @@ class _ClassroomPageState extends State<ClassroomPage> {
   final _searchCtrl        = TextEditingController();
   final _predictionService = PredictionService();
   final _repo              = Get.find<FirestoreRepository>();
+  final _csvService        = CsvAttendanceService();
 
   String _searchQuery       = '';
   bool   _attendanceSaved   = false;
@@ -103,10 +108,17 @@ class _ClassroomPageState extends State<ClassroomPage> {
             ),
             const SizedBox(height: 12),
             _attendanceOption(
+              icon: Icons.download,
+              label: 'Download Roster',
+              subtitle: 'Get pre-filled CSV with student IDs',
+              onTap: () { Navigator.pop(context); _downloadRoster(students); },
+            ),
+            const SizedBox(height: 12),
+            _attendanceOption(
               icon: Icons.upload_file,
               label: 'Upload CSV File',
               subtitle: 'Import attendance from a .csv file',
-              onTap: () { Navigator.pop(context); _autoAttendance('CSV', students); },
+              onTap: () { Navigator.pop(context); _pickCsvAttendance(students); },
             ),
             const SizedBox(height: 12),
             _attendanceOption(
@@ -161,6 +173,257 @@ class _ClassroomPageState extends State<ClassroomPage> {
     await _saveAttendance(students);
     if (!mounted) return;
     _showSnack('$method attendance uploaded for ${widget.classTitle}!');
+  }
+
+  // ── CSV ATTENDANCE ────────────────────────────────────────────────────────
+
+  // ── DOWNLOAD ROSTER ──────────────────────────────────────────────────────
+
+  Future<void> _downloadRoster(List<StudentModel> students) async {
+    if (students.isEmpty) {
+      _showSnack('No students in this classroom yet.', isError: true);
+      return;
+    }
+
+    // Check if any students are missing IDs (signed up before the fix)
+    final missingId = students.where((s) => s.studentId.isEmpty || s.studentId == s.firestoreId).toList();
+    if (missingId.isNotEmpty) {
+      _showSnack(
+        '${missingId.length} student(s) have no ID yet — ask them to re-verify their profile.',
+        isError: true,
+      );
+    }
+
+    // Build CSV — student_id, name, status (blank for teacher to fill)
+    final buffer = StringBuffer();
+    buffer.writeln('student_id,name,status');
+    for (final s in students) {
+      final id = s.studentId.isNotEmpty ? s.studentId : s.firestoreId;
+      // Escape commas in names
+      final safeName = s.name.contains(',') ? '"${s.name}"' : s.name;
+      buffer.writeln('$id,$safeName,');
+    }
+
+    try {
+      final dir      = await getTemporaryDirectory();
+      final fileName = 'roster_${widget.classroomId.isNotEmpty ? widget.classroomId : widget.classTitle}_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final file     = File('${dir.path}/$fileName');
+      await file.writeAsString(buffer.toString());
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'Attendance Roster — ${widget.classTitle}',
+        text: 'Fill in the status column with P (Present) or A (Absent), then upload via "Upload CSV File".',
+      );
+    } catch (e) {
+      if (mounted) _showSnack('Could not export roster: \$e', isError: true);
+    }
+  }
+
+  Future<void> _pickCsvAttendance(List<StudentModel> students) async {
+    // Guard: students with no IDs can't be matched from CSV
+    final validStudents = students.where((s) => s.studentId.isNotEmpty).toList();
+    if (validStudents.isEmpty) {
+      _showSnack(
+        'No student IDs found. Download the roster first — students may need to update their profiles.',
+        isError: true,
+      );
+      return;
+    }
+
+    _showSnack('Opening file picker…');
+    final result = await _csvService.pickAndParse(validStudents);
+    if (result == null) return; // user cancelled
+    if (!mounted) return;
+    if (result.hasError) {
+      _showSnack(result.error!, isError: true);
+      return;
+    }
+    _showCsvPreviewSheet(students, result);
+  }
+
+  void _showCsvPreviewSheet(List<StudentModel> students, CsvParseResult result) {
+    final idToStudent = {for (final s in students) s.firestoreId: s};
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (_, scroll) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF3B2028),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(children: [
+            // ── Handle ───────────────────────────────────────────────────
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.white30,
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+
+            // ── Header ───────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('CSV Preview',
+                      style: TextStyle(color: Colors.white, fontSize: 20,
+                          fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+                  Row(children: [
+                    _countBadge('P ${result.presentCount}', Colors.green),
+                    const SizedBox(width: 6),
+                    _countBadge('A ${result.absentCount}', Colors.redAccent),
+                  ]),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${result.attendanceMap.length} students matched from CSV',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ),
+            ),
+
+            // ── Unmatched warning ─────────────────────────────────────────
+            if (result.hasWarning) ...[
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${result.unmatchedIds.length} ID(s) not found in this class: '
+                              '${result.unmatchedIds.take(5).join(', ')}'
+                              '${result.unmatchedIds.length > 5 ? '…' : ''}',
+                          style: const TextStyle(
+                              color: Colors.orange, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+            const Divider(color: Colors.white12, height: 1),
+            const SizedBox(height: 8),
+
+            // ── Student rows ──────────────────────────────────────────────
+            Expanded(
+              child: ListView(
+                controller: scroll,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: result.attendanceMap.entries.map((entry) {
+                  final student   = idToStudent[entry.key];
+                  final isPresent = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFF4A3439),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFFE9C2D7),
+                        child: Text(student?.initial ?? '?',
+                            style: const TextStyle(
+                                color: Color(0xFF512D38),
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      title: Text(student?.name ?? entry.key,
+                          style: const TextStyle(color: Colors.white,
+                              fontFamily: 'Pridi', fontSize: 14)),
+                      subtitle: Text(student?.studentId ?? '',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 11)),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: isPresent
+                              ? Colors.green.withOpacity(0.2)
+                              : Colors.redAccent.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isPresent
+                                ? Colors.green.withOpacity(0.5)
+                                : Colors.redAccent.withOpacity(0.5),
+                          ),
+                        ),
+                        child: Text(
+                          isPresent ? 'Present' : 'Absent',
+                          style: TextStyle(
+                            color: isPresent ? Colors.green : Colors.redAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+            // ── Confirm button ────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: GestureDetector(
+                onTap: () async {
+                  Navigator.pop(context);
+                  result.attendanceMap.forEach((firestoreId, present) {
+                    _attendanceMap[firestoreId] = present;
+                  });
+                  await _saveAttendance(students);
+                  if (mounted) {
+                    _showSnack(
+                        'CSV attendance saved!  '
+                            'Present: ${result.presentCount} / ${result.attendanceMap.length}');
+                  }
+                },
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFE9C2D7),
+                      borderRadius: BorderRadius.circular(28)),
+                  child: const Center(
+                    child: Text('Confirm & Save',
+                        style: TextStyle(fontFamily: 'Pridi',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Color(0xFF512D38))),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   // ── MANUAL ATTENDANCE SHEET ───────────────────────────────────────────────
@@ -336,10 +599,10 @@ class _ClassroomPageState extends State<ClassroomPage> {
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
 
-    // Use classroomId if provided, fall back to classTitle for backwards compat
-    final streamId = widget.classroomId.isNotEmpty
-        ? widget.classroomId
-        : widget.classTitle; // ← CHANGED
+    // Always use classroomId (the classCode e.g. "AB12CD") to query students.
+    // classTitle is display-only and must NEVER be used as a Firestore query key —
+    // students store classroomId = classCode, not the human-readable title.
+    final streamId = widget.classroomId;
 
     return Scaffold(
       backgroundColor: const Color(0xFF3B2F2F),

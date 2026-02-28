@@ -103,7 +103,6 @@ class StudentProfilePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const _BottomNavBar(),
     );
   }
 }
