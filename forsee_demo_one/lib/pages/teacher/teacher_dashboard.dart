@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:forsee_demo_one/pages/teacher/classroom_page.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
+import 'package:forsee_demo_one/pages/teacher/add_classroom_page.dart';
 
 // ── DATA MODELS ───────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ class _RiskyStudent {
 }
 
 class _ClassroomData {
-  final String classId;   // ← Firestore doc ID = the classroom code students type
+  final String classId;
   final String title;
   final int totalStudents;
   final int highRiskCount;
@@ -107,11 +108,11 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   late PageController _pageController;
   double _currentPage = 0.0;
 
-  bool   _loading      = true;
+  bool    _loading = true;
   String? _error;
 
-  String _teacherName  = '';
-  String _teacherId    = '';
+  String _teacherName = '';
+  String _teacherId   = '';
 
   List<_ClassroomData>   _classrooms    = [];
   List<_RiskyStudent>    _riskyStudents = [];
@@ -133,7 +134,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     super.dispose();
   }
 
-  // ── DATA LOADING ──────────────────────────────────────────────────────────
+  // ── DATA LOADING ─────────────────────────────────────────────────────────────
 
   Future<void> _loadDashboard() async {
     setState(() { _loading = true; _error = null; });
@@ -149,14 +150,15 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       _teacherName = userData['name'] as String? ?? 'Teacher';
       _teacherId   = uid;
 
-      // 1) Classrooms
       final classroomsSnap = await _db.collection('classrooms').get();
 
       final Map<String, List<String>> classStudents = {};
+      final Map<String, String> classroomTitles = {};
       for (final doc in classroomsSnap.docs) {
         final ids = List<String>.from(
             (doc.data()['studentIds'] as List<dynamic>?) ?? []);
         classStudents[doc.id] = ids;
+        classroomTitles[doc.id] = doc.data()['title'] as String? ?? doc.id;
       }
 
       final allStudentIds = classStudents.values
@@ -164,9 +166,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
           .toSet()
           .toList();
 
-      // 2) Predictions — sorted in Dart to avoid composite index requirement
-      final Map<String, String> studentRisk    = {};
-      final Map<String, _RiskyStudent> riskMap = {};
+      final Map<String, String>       studentRisk = {};
+      final Map<String, _RiskyStudent> riskMap    = {};
 
       if (allStudentIds.isNotEmpty) {
         final chunks = _chunk(allStudentIds, 30);
@@ -219,7 +220,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         }
       }
 
-      // 3) Classroom summaries
       final List<_ClassroomData> classrooms = [];
       for (final entry in classStudents.entries) {
         final classId    = entry.key;
@@ -228,8 +228,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         final medCount   = studentIds.where((s) => studentRisk[s] == 'MEDIUM').length;
 
         classrooms.add(_ClassroomData(
-          classId:         classId,          // ← raw Firestore doc ID
-          title:           'Class $classId', // ← display name
+          classId:         classId,
+          title:           classroomTitles[classId] ?? classId,
           totalStudents:   studentIds.length,
           highRiskCount:   highCount,
           mediumRiskCount: medCount,
@@ -241,14 +241,12 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         return (order[a.overallRisk] ?? 3).compareTo(order[b.overallRisk] ?? 3);
       });
 
-      // 4) Risky students list
       final riskyList = riskMap.values.toList()
         ..sort((a, b) {
           const order = {'HIGH': 0, 'MEDIUM': 1};
           return (order[a.riskLevel] ?? 2).compareTo(order[b.riskLevel] ?? 2);
         });
 
-      // 5) Notifications
       final List<_AppNotification> notifications = [];
       for (final s in riskyList.where((s) => s.riskLevel == 'HIGH')) {
         notifications.add(_AppNotification(
@@ -292,7 +290,39 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     return chunks;
   }
 
-  // ── NOTIFICATIONS ─────────────────────────────────────────────────────────
+  // ── ADD CLASSROOM ─────────────────────────────────────────────────────────────
+  // Opens the form, waits for the result map from AddClassroomPage,
+  // then wraps it into a _ClassroomData and appends to the slider.
+
+  Future<void> _openAddClassroom() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const AddClassroomPage()),
+    );
+    if (result != null) {
+      setState(() {
+        _classrooms.add(_ClassroomData(
+          classId:         result['id']           as String? ?? '',
+          title:           result['title']         as String? ?? 'New Class',
+          totalStudents:   result['participants']  as int?    ?? 0,
+          highRiskCount:   0,
+          mediumRiskCount: 0,
+        ));
+      });
+      // Jump the PageView to the newly added card
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.animateToPage(
+            _classrooms.length - 1,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
+  }
+
+  // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 
   void _openNotifications() {
     showModalBottomSheet(
@@ -313,10 +343,12 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               ),
               child: Column(children: [
                 const SizedBox(height: 12),
-                Container(width: 40, height: 4,
-                    decoration: BoxDecoration(
-                        color: Colors.white30,
-                        borderRadius: BorderRadius.circular(2))),
+                Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.white30,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -356,9 +388,10 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 const SizedBox(height: 10),
                 Expanded(
                   child: _notifications.isEmpty
-                      ? const Center(child: Text('No notifications',
-                      style: TextStyle(color: Colors.white38,
-                          fontFamily: 'Pridi')))
+                      ? const Center(
+                      child: Text('No notifications',
+                          style: TextStyle(color: Colors.white38,
+                              fontFamily: 'Pridi')))
                       : ListView.builder(
                     controller: scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -408,7 +441,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                   fontSize: 14,
                                 )),
                             subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
                               children: [
                                 Text(n.body,
                                     style: const TextStyle(
@@ -442,14 +476,14 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     return '${diff.inDays}d ago';
   }
 
-  // ── PROFILE ───────────────────────────────────────────────────────────────
+  // ── PROFILE ───────────────────────────────────────────────────────────────────
 
   void _openProfile() {
     Get.toNamed(AppRoutes.TEACHER_PROFILE,
         arguments: {'name': _teacherName});
   }
 
-  // ── RISKY STUDENT DETAIL ──────────────────────────────────────────────────
+  // ── RISKY STUDENT DETAIL ──────────────────────────────────────────────────────
 
   void _showRiskyStudentDetail(_RiskyStudent student) {
     showDialog(
@@ -532,7 +566,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     ]);
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────
+  // ── BUILD ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -587,23 +621,78 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               const SizedBox(height: 30),
               _buildAttentionSection(),
               const SizedBox(height: 40),
-              const Text('My Classrooms',
-                  style: TextStyle(color: Colors.white, fontSize: 26,
-                      fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+
+              // ── "My Classrooms" row with + button ──────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('My Classrooms',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Pridi')),
+                  GestureDetector(
+                    onTap: _openAddClassroom,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFA6768B),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add,
+                          color: Colors.white, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+              // ───────────────────────────────────────────────────────────────
+
               const SizedBox(height: 20),
               Expanded(
                 child: _classrooms.isEmpty
-                    ? const Center(child: Text('No classrooms found.',
-                    style: TextStyle(color: Colors.white38,
-                        fontFamily: 'Pridi')))
+                    ? Center(
+                  child: GestureDetector(
+                    onTap: _openAddClassroom,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64, height: 64,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFA6768B)
+                                .withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.add,
+                              color: Color(0xFFA6768B), size: 32),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text('No classrooms yet',
+                            style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 16,
+                                fontFamily: 'Pridi')),
+                        const SizedBox(height: 4),
+                        const Text('Tap + to create one',
+                            style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                )
                     : PageView.builder(
                   controller: _pageController,
                   clipBehavior: Clip.none,
                   itemCount: _classrooms.length,
                   itemBuilder: (context, index) {
                     final rel     = index - _currentPage;
-                    final scale   = (1 - (rel.abs() * 0.2)).clamp(0.8, 1.0);
-                    final opacity = (1 - (rel.abs() * 0.5)).clamp(0.5, 1.0);
+                    final scale   =
+                    (1 - (rel.abs() * 0.2)).clamp(0.8, 1.0);
+                    final opacity =
+                    (1 - (rel.abs() * 0.5)).clamp(0.5, 1.0);
                     return Transform.scale(
                       scale: scale,
                       child: Opacity(
@@ -621,7 +710,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     );
   }
 
-  // ── HEADER ────────────────────────────────────────────────────────────────
+  // ── HEADER ────────────────────────────────────────────────────────────────────
 
   Widget _buildHeader(int unreadCount) {
     return Row(
@@ -646,12 +735,13 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   child: Container(
                     width: 14, height: 14,
                     decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle),
-                    child: Center(child: Text('$unreadCount',
-                        style: const TextStyle(fontSize: 8,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold))),
+                        color: Colors.redAccent, shape: BoxShape.circle),
+                    child: Center(
+                      child: Text('$unreadCount',
+                          style: const TextStyle(fontSize: 8,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                    ),
                   ),
                 ),
             ]),
@@ -668,7 +758,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     );
   }
 
-  // ── ATTENTION SECTION ─────────────────────────────────────────────────────
+  // ── ATTENTION SECTION ─────────────────────────────────────────────────────────
 
   Widget _buildAttentionSection() {
     return Stack(
@@ -686,9 +776,10 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 color: const Color(0xFFA6768B),
                 borderRadius: BorderRadius.circular(15)),
             child: _riskyStudents.isEmpty
-                ? const Center(child: Text(
-                'No risky students at the moment',
-                style: TextStyle(color: Colors.white70, fontSize: 15)))
+                ? const Center(
+                child: Text('No risky students at the moment',
+                    style: TextStyle(
+                        color: Colors.white70, fontSize: 15)))
                 : ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
@@ -711,13 +802,16 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                       children: [
                         Row(children: [
-                          Container(width: 8, height: 8,
-                              decoration: BoxDecoration(
-                                  color: s.color,
-                                  shape: BoxShape.circle)),
+                          Container(
+                            width: 8, height: 8,
+                            decoration: BoxDecoration(
+                                color: s.color,
+                                shape: BoxShape.circle),
+                          ),
                           const SizedBox(width: 5),
                           Text(s.riskLevel,
                               style: TextStyle(color: s.color,
@@ -725,7 +819,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                   fontWeight: FontWeight.bold)),
                         ]),
                         Text(s.name,
-                            style: const TextStyle(color: Colors.white,
+                            style: const TextStyle(
+                                color: Colors.white,
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
                                 fontFamily: 'Pridi'),
@@ -733,7 +828,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                             overflow: TextOverflow.ellipsis),
                         Text(s.reason,
                             style: const TextStyle(
-                                color: Colors.white54, fontSize: 11),
+                                color: Colors.white54,
+                                fontSize: 11),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis),
                       ],
@@ -753,7 +849,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     );
   }
 
-  // ── CLASS CARD ────────────────────────────────────────────────────────────
+  // ── CLASS CARD ────────────────────────────────────────────────────────────────
 
   Widget _buildClassCard(int index) {
     final classroom  = _classrooms[index];
@@ -767,7 +863,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         MaterialPageRoute(
           builder: (_) => ClassroomPage(
             classTitle:   classroom.title,
-            classroomId:  classroom.classId,  // ← THE FIX: was missing before
+            classroomId:  classroom.classId,
             subject:      '',
             semester:     'Semester I',
             std:          '',
@@ -832,7 +928,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     );
   }
 
-  // ── HELPER ────────────────────────────────────────────────────────────────
+  // ── HELPER ────────────────────────────────────────────────────────────────────
 
   String _riskLevelString(String level) {
     switch (level.toUpperCase()) {

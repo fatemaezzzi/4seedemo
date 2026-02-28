@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/pages/welcome_page_seond.dart';
 
-
 class WelcomePageFirst extends StatelessWidget {
   const WelcomePageFirst({super.key});
 
@@ -17,9 +16,9 @@ class WelcomePageFirst extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end, // push button to bottom
           children: [
-            const SizedBox(height: 825), // space above
+            const SizedBox(height: 20),
             SizedBox(
               width: 560,
               height: 56,
@@ -49,6 +48,7 @@ class WelcomePageFirst extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 60), // bottom padding
           ],
         ),
       ),
