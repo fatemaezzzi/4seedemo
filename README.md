@@ -67,7 +67,7 @@ flutter run
 > Make sure to configure your own Firebase credentials before running.
 
 ---
-
+## google collab link - https://colab.research.google.com/drive/1BKnGxGWfZEItrhDaHIld6tt5inv7NzJ7#scrollTo=ahbuMU_hZ3uL
 ## Tech Stack
 - **Mobile App:** Flutter (Dart)
 - **Backend/API:** Python, Flask
