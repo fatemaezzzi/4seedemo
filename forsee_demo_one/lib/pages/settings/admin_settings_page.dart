@@ -5,6 +5,7 @@ import 'package:forsee_demo_one/pages/settings/settings_widget.dart';
 import '../shared/change_password_page.dart';
 import '../shared/linked_account_page.dart';
 import '../shared/faqs_page.dart';
+import 'package:forsee_demo_one/scripts/seed_trigger.dart';
 import '../shared/report_problem_page.dart';
 import '../shared/talk_counsellor_page.dart';
 
@@ -126,6 +127,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                 ),
               ),
             ]),
+
+            const SeedTriggerWidget(),
 
             const SizedBox(height: 24),
           ],

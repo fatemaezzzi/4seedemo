@@ -60,11 +60,22 @@ class AuthController extends GetxController {
     // Signed in → fetch Firestore profile
     isLoading.value = true;
     try {
-      final doc = await _db.collection('users').doc(user.uid).get();
+      // Try direct doc lookup first (normal signups: doc ID == uid)
+      var doc = await _db.collection('users').doc(user.uid).get();
 
       if (!doc.exists) {
-        // No Firestore profile → sign out for safety
-        await _auth.signOut();
+        // Fallback: query by uid field (seeded users e.g. s_ayaan_khan)
+        final snap = await _db
+            .collection('users')
+            .where('uid', isEqualTo: user.uid)
+            .limit(1)
+            .get();
+        if (snap.docs.isEmpty) {
+          await _auth.signOut();
+          return;
+        }
+        appUser.value = AppUser.fromMap(snap.docs.first.data(), user.uid);
+        _redirectByRole();
         return;
       }
 

@@ -1,8 +1,4 @@
 // lib/pages/admin/admin_dashboard.dart
-//
-// Class name: AdminDashboard  ← matches app_pages.dart route exactly
-// Import path used in app_pages.dart:
-//   import 'package:forsee_demo_one/pages/admin/admin_dashboard.dart';
 
 import 'package:flutter/material.dart';
 import 'package:forsee_demo_one/controllers/auth_controller.dart';
@@ -60,8 +56,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       if (mounted) setState(() => _statsLoading = false);
     }
   }
-
-  // ── BUILD ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -165,42 +159,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     final s = _stats;
     final items = [
-      _StatItem(
-        icon:  Icons.people_alt_outlined,
-        label: 'Total Students',
-        value: '${s?.totalStudents ?? 0}',
-        color: _teal,
-      ),
-      _StatItem(
-        icon:  Icons.supervised_user_circle_outlined,
-        label: 'Teachers',
-        value: '${s?.totalTeachers ?? 0}',
-        color: _pastel,
-      ),
-      _StatItem(
-        icon:  Icons.warning_amber_rounded,
-        label: 'High Risk',
-        value: '${s?.highRiskCount ?? 0}',
-        color: Colors.redAccent,
-      ),
-      _StatItem(
-        icon:  Icons.info_outline,
-        label: 'Medium Risk',
-        value: '${s?.mediumRiskCount ?? 0}',
-        color: Colors.orangeAccent,
-      ),
-      _StatItem(
-        icon:  Icons.check_circle_outline,
-        label: 'Low Risk',
-        value: '${s?.lowRiskCount ?? 0}',
-        color: Colors.yellowAccent,
-      ),
-      _StatItem(
-        icon:  Icons.verified_outlined,
-        label: 'No Prediction',
-        value: '${s?.noRiskCount ?? 0}',
-        color: Colors.tealAccent,
-      ),
+      _StatItem(icon: Icons.people_alt_outlined,             label: 'Total Students', value: '${s?.totalStudents ?? 0}',  color: _teal),
+      _StatItem(icon: Icons.supervised_user_circle_outlined, label: 'Teachers',       value: '${s?.totalTeachers ?? 0}',  color: _pastel),
+      _StatItem(icon: Icons.warning_amber_rounded,           label: 'High Risk',      value: '${s?.highRiskCount ?? 0}',  color: Colors.redAccent),
+      _StatItem(icon: Icons.info_outline,                    label: 'Medium Risk',    value: '${s?.mediumRiskCount ?? 0}',color: Colors.orangeAccent),
+      _StatItem(icon: Icons.check_circle_outline,            label: 'Low Risk',       value: '${s?.lowRiskCount ?? 0}',   color: Colors.yellowAccent),
+      _StatItem(icon: Icons.verified_outlined,               label: 'No Prediction',  value: '${s?.noRiskCount ?? 0}',    color: Colors.tealAccent),
     ];
 
     return GridView.builder(
@@ -237,10 +201,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: _QuickActionButton(
               icon:  Icons.school_outlined,
               label: 'Students',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const StudentDatabasePage()),
-              ),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const StudentDatabasePage())),
             ),
           ),
           const SizedBox(width: 10),
@@ -248,10 +210,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: _QuickActionButton(
               icon:  Icons.supervised_user_circle_outlined,
               label: 'Teachers',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TeacherAnalysisPage()),
-              ),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const TeacherAnalysisPage())),
             ),
           ),
           const SizedBox(width: 10),
@@ -259,10 +219,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: _QuickActionButton(
               icon:  Icons.settings_outlined,
               label: 'Settings',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AdminSettingsPage()),
-              ),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const AdminSettingsPage())),
             ),
           ),
         ]),
@@ -352,44 +310,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
           return GestureDetector(
             onTap: () {
               switch (e.key) {
-                case 0:
-                  setState(() => _navIndex = 0);
-                case 1:
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const TeacherAnalysisPage()),
-                  );
-                case 2:
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const StudentDatabasePage()),
-                  );
-                case 3:
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AdminSettingsPage()),
-                  );
+                case 0: setState(() => _navIndex = 0);
+                case 1: Navigator.push(context, MaterialPageRoute(builder: (_) => const TeacherAnalysisPage()));
+                case 2: Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentDatabasePage()));
+                case 3: Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminSettingsPage()));
               }
             },
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(
-                e.value.$1,
-                color: active ? _teal : _pastel.withOpacity(0.4),
-                size:  active ? 26 : 22,
-              ),
+              Icon(e.value.$1,
+                  color: active ? _teal : _pastel.withOpacity(0.4),
+                  size:  active ? 26 : 22),
               const SizedBox(height: 2),
-              Text(
-                e.value.$2,
-                style: TextStyle(
-                  color:      active ? _teal : _pastel.withOpacity(0.4),
-                  fontSize:   10,
-                  fontFamily: 'Pridi',
-                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
+              Text(e.value.$2,
+                  style: TextStyle(
+                      color:      active ? _teal : _pastel.withOpacity(0.4),
+                      fontSize:   10,
+                      fontFamily: 'Pridi',
+                      fontWeight: active ? FontWeight.bold : FontWeight.normal)),
             ]),
           );
         }).toList(),
@@ -405,12 +342,7 @@ class _StatItem {
   final String   label;
   final String   value;
   final Color    color;
-  const _StatItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
+  const _StatItem({required this.icon, required this.label, required this.value, required this.color});
 }
 
 class _StatCard extends StatelessWidget {
@@ -431,23 +363,13 @@ class _StatCard extends StatelessWidget {
         children: [
           Icon(item.icon, color: item.color, size: 22),
           const SizedBox(height: 8),
-          Text(
-            item.value,
-            style: TextStyle(
-                color:      item.color,
-                fontSize:   22,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Pridi'),
-          ),
+          Text(item.value,
+              style: TextStyle(
+                  color: item.color, fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
           const SizedBox(height: 4),
-          Text(
-            item.label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color:      _pastel.withOpacity(0.6),
-                fontSize:   10,
-                fontFamily: 'Pridi'),
-          ),
+          Text(item.label,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _pastel.withOpacity(0.6), fontSize: 10, fontFamily: 'Pridi')),
         ],
       ),
     );
@@ -460,12 +382,7 @@ class _QuickActionButton extends StatelessWidget {
   final IconData     icon;
   final String       label;
   final VoidCallback onTap;
-
-  const _QuickActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _QuickActionButton({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -481,14 +398,9 @@ class _QuickActionButton extends StatelessWidget {
         child: Column(children: [
           Icon(icon, color: _teal, size: 26),
           const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-                color:      _blush,
-                fontSize:   12,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Pridi'),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  color: _blush, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Pridi')),
         ]),
       ),
     );
@@ -512,14 +424,13 @@ class _PredictionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final studentId = data['studentId'] as String? ?? 'Unknown';
+    // studentName is enriched by streamRecentPredictions — falls back to UID
+    final studentName = (data['studentName'] as String?)?.isNotEmpty == true
+        ? data['studentName'] as String
+        : (data['studentId'] as String? ?? 'Unknown');
     final riskLevel = data['risk_level'] as String? ?? 'UNKNOWN';
     final dropout   = (data['dropout_probability'] as num?)?.toDouble() ?? 0.0;
     final color     = _riskColor(riskLevel);
-
-    final displayId = studentId.length > 14
-        ? '${studentId.substring(0, 14)}…'
-        : studentId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -540,21 +451,17 @@ class _PredictionTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Student: $displayId',
-                style: const TextStyle(
-                    color:      _blush,
-                    fontSize:   13,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Pridi'),
-              ),
-              Text(
-                'Dropout prob: ${(dropout * 100).toStringAsFixed(1)}%',
-                style: TextStyle(
-                    color:      _pastel.withOpacity(0.55),
-                    fontSize:   11,
-                    fontFamily: 'Pridi'),
-              ),
+              Text(studentName,
+                  style: const TextStyle(
+                      color: _blush,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Pridi')),
+              Text('Dropout risk: ${(dropout * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(
+                      color: _pastel.withOpacity(0.55),
+                      fontSize: 11,
+                      fontFamily: 'Pridi')),
             ],
           ),
         ),
@@ -564,14 +471,9 @@ class _PredictionTile extends StatelessWidget {
               color:        color.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8),
               border:       Border.all(color: color.withOpacity(0.6))),
-          child: Text(
-            riskLevel.toUpperCase(),
-            style: TextStyle(
-                color:      color,
-                fontSize:   10,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Pridi'),
-          ),
+          child: Text(riskLevel.toUpperCase(),
+              style: TextStyle(
+                  color: color, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
         ),
       ]),
     );

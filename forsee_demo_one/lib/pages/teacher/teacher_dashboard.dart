@@ -146,90 +146,105 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       final userDoc = await _db.collection('users').doc(uid).get();
       if (!userDoc.exists) throw Exception('Teacher profile not found');
 
-      final userData = userDoc.data()!;
-      _teacherName = userData['name'] as String? ?? 'Teacher';
+      _teacherName = (userDoc.data()!['name'] as String?) ?? 'Teacher';
       _teacherId   = uid;
 
+      // ── Step 1: Load classrooms (for classroom cards only) ─────────────────
       final classroomsSnap = await _db.collection('classrooms').get();
 
-      final Map<String, List<String>> classStudents = {};
-      final Map<String, String> classroomTitles = {};
+      final Map<String, List<String>> classStudents   = {};
+      final Map<String, String>       classroomTitles = {};
+
       for (final doc in classroomsSnap.docs) {
-        final ids = List<String>.from(
-            (doc.data()['studentIds'] as List<dynamic>?) ?? []);
-        // Students store classroomId = classCode (e.g. "AB12CD"), not the Firestore doc id.
-        // Fall back to doc.id if classCode is missing (older docs).
-        final classCode = doc.data()['classCode'] as String?;
-        final key = (classCode != null && classCode.isNotEmpty) ? classCode : doc.id;
-        classStudents[key] = ids;
-        classroomTitles[key] = doc.data()['title'] as String? ?? key;
+        final data      = doc.data();
+        final classCode = data['classCode'] as String?;
+        final key       = (classCode != null && classCode.isNotEmpty)
+            ? classCode : doc.id;
+        classStudents[key]   = List<String>.from(
+            (data['studentIds'] as List<dynamic>?) ?? []);
+        classroomTitles[key] = data['title'] as String? ?? key;
       }
 
-      final allStudentIds = classStudents.values
-          .expand((ids) => ids)
-          .toSet()
-          .toList();
+      // ── Step 2: Query students/ DIRECTLY by riskLevel ──────────────────────
+      // OLD approach depended on classrooms.studentIds matching exactly —
+      // if those IDs were wrong, zero students loaded → Attention always empty.
+      // NEW: query Firestore directly for riskLevel field.
+      // student_model.dart stores riskLevel as lowercase: 'high','medium','low'
 
-      final Map<String, String>       studentRisk = {};
-      final Map<String, _RiskyStudent> riskMap    = {};
+      final highSnap = await _db
+          .collection('students')
+          .where('riskLevel', isEqualTo: 'high')
+          .get();
 
-      if (allStudentIds.isNotEmpty) {
-        final chunks = _chunk(allStudentIds, 30);
-        for (final chunk in chunks) {
-          final predSnap = await _db
-              .collection('predictions')
-              .where('studentId', whereIn: chunk)
-              .get();
+      final medSnap = await _db
+          .collection('students')
+          .where('riskLevel', isEqualTo: 'medium')
+          .get();
 
-          final docs = predSnap.docs.toList()
-            ..sort((a, b) {
-              final tA = (a.data()['timestamp'] as Timestamp?)
-                  ?.millisecondsSinceEpoch ?? 0;
-              final tB = (b.data()['timestamp'] as Timestamp?)
-                  ?.millisecondsSinceEpoch ?? 0;
-              return tB.compareTo(tA);
-            });
+      // ── Step 3: Build risky students list from query results ───────────────
+      final Map<String, _RiskyStudent> riskMap = {};
 
-          for (final doc in docs) {
-            final data    = doc.data();
-            final sid     = data['studentId']   as String? ?? '';
-            final risk    = (data['risk_level'] as String? ?? '').toUpperCase();
-            final name    = data['studentName'] as String? ?? 'Unknown';
-            final factors = List<String>.from(
-                (data['risk_factors'] as List<dynamic>?) ?? []);
-            final rec     = data['recommendation'] as String? ?? '';
+      for (final doc in [...highSnap.docs, ...medSnap.docs]) {
+        final data        = doc.data();
+        final firestoreId = doc.id;
+        final riskStr     = (data['riskLevel'] as String? ?? '').toUpperCase();
 
-            if (!studentRisk.containsKey(sid)) {
-              studentRisk[sid] = risk;
+        if (riskStr != 'HIGH' && riskStr != 'MEDIUM') continue;
 
-              final classId = classStudents.entries
-                  .firstWhere(
-                    (e) => e.value.contains(sid),
-                orElse: () => const MapEntry('', []),
-              )
-                  .key;
+        final name = data['name'] as String? ?? 'Unknown';
 
-              if (risk == 'HIGH' || risk == 'MEDIUM') {
-                riskMap[sid] = _RiskyStudent(
-                  studentId:      sid,
-                  name:           name,
-                  classId:        classId,
-                  riskLevel:      risk,
-                  riskFactors:    factors,
-                  recommendation: rec,
-                );
-              }
-            }
+        // Find which classroom this student belongs to (best effort)
+        final classId = classStudents.entries
+            .firstWhere(
+              (e) => e.value.contains(firestoreId),
+          orElse: () => const MapEntry('', <String>[]),
+        )
+            .key;
+
+        // Risk factors from student doc (written by prediction service)
+        final factors = List<String>.from(
+            (data['riskFactors'] as List<dynamic>?) ?? []);
+
+        // Build factors from raw numbers if not stored yet
+        if (factors.isEmpty) {
+          final totalDays   = (data['totalDays']   as num?)?.toInt() ?? 0;
+          final presentDays = (data['presentDays'] as num?)?.toInt() ?? 0;
+          final avgMarks    = (data['averageMarks'] as num?)?.toDouble() ?? 100.0;
+          final incidents   = (data['incidentCount'] as num?)?.toInt() ?? 0;
+
+          if (totalDays > 0) {
+            final pct = (presentDays / totalDays) * 100;
+            if (pct < 75) factors.add('Attendance ${pct.toStringAsFixed(0)}% — below threshold');
           }
+          if (avgMarks < 65)  factors.add('Marks ${avgMarks.toStringAsFixed(0)}% — below average');
+          if (incidents > 0)  factors.add('$incidents behaviour incident${incidents > 1 ? 's' : ''} logged');
+          if (factors.isEmpty) factors.add('Risk detected — review student data');
         }
+
+        final rec = data['recommendation'] as String? ?? '';
+
+        riskMap[firestoreId] = _RiskyStudent(
+          studentId:      firestoreId,
+          name:           name,
+          classId:        classId,
+          riskLevel:      riskStr,
+          riskFactors:    factors,
+          recommendation: rec,
+        );
       }
 
+      // ── Step 4: Build classroom cards with correct risk counts ─────────────
       final List<_ClassroomData> classrooms = [];
       for (final entry in classStudents.entries) {
         final classId    = entry.key;
         final studentIds = entry.value;
-        final highCount  = studentIds.where((s) => studentRisk[s] == 'HIGH').length;
-        final medCount   = studentIds.where((s) => studentRisk[s] == 'MEDIUM').length;
+
+        int highCount = 0, medCount = 0;
+        for (final sid in studentIds) {
+          final risk = riskMap[sid]?.riskLevel;
+          if (risk == 'HIGH')   highCount++;
+          if (risk == 'MEDIUM') medCount++;
+        }
 
         classrooms.add(_ClassroomData(
           classId:         classId,
@@ -245,12 +260,14 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         return (order[a.overallRisk] ?? 3).compareTo(order[b.overallRisk] ?? 3);
       });
 
+      // ── Step 5: Sort risky list — HIGH first ──────────────────────────────
       final riskyList = riskMap.values.toList()
         ..sort((a, b) {
           const order = {'HIGH': 0, 'MEDIUM': 1};
           return (order[a.riskLevel] ?? 2).compareTo(order[b.riskLevel] ?? 2);
         });
 
+      // ── Step 6: Build notifications ───────────────────────────────────────
       final List<_AppNotification> notifications = [];
       for (final s in riskyList.where((s) => s.riskLevel == 'HIGH')) {
         notifications.add(_AppNotification(
@@ -277,6 +294,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         _notifications = notifications;
         _loading       = false;
       });
+
     } catch (e) {
       setState(() {
         _error   = 'Failed to load dashboard: $e';
@@ -284,6 +302,77 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       });
     }
   }
+
+  // ── TEMP: FIX RISK LEVELS FOR DEMO ───────────────────────────────────────────
+  // Tap the red FIX button in the top-right header.
+  // It directly writes riskLevel='high' to your first real student in Firestore,
+  // then reloads the dashboard so Attention section shows them immediately.
+  // DELETE _fixRiskLevels() AND the FIX button in _buildHeader after your demo.
+
+  Future<void> _fixRiskLevels() async {
+    final snap = await _db.collection('students').get();
+
+    if (snap.docs.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ No students found in Firestore!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final docs = snap.docs;
+
+    // First student → HIGH risk
+    await _db.collection('students').doc(docs[0].id).set({
+      'riskLevel':      'high',
+      'riskFactors':    [
+        'Attendance 52% — critically low',
+        'Marks 35% — failing range',
+        '3 behaviour incidents logged',
+      ],
+      'recommendation': 'URGENT: Call parents immediately. Schedule remedial sessions.',
+      'totalDays':      15,
+      'presentDays':    8,
+      'averageMarks':   35.0,
+      'incidentCount':  3,
+    }, SetOptions(merge: true));
+
+    // Second student → MEDIUM risk (if exists)
+    if (docs.length > 1) {
+      await _db.collection('students').doc(docs[1].id).set({
+        'riskLevel':      'medium',
+        'riskFactors':    [
+          'Attendance 73% — below 75% threshold',
+          '1 behaviour incident noted',
+        ],
+        'recommendation': 'Set up weekly check-ins. Send parent SMS update.',
+        'totalDays':      15,
+        'presentDays':    11,
+        'averageMarks':   55.0,
+        'incidentCount':  1,
+      }, SetOptions(merge: true));
+    }
+
+    // Reload dashboard to show updated data immediately
+    await _loadDashboard();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ ${docs[0].data()['name'] ?? docs[0].id} is now HIGH risk! Dashboard refreshed.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   List<List<T>> _chunk<T>(List<T> list, int size) {
     final chunks = <List<T>>[];
@@ -295,8 +384,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   }
 
   // ── ADD CLASSROOM ─────────────────────────────────────────────────────────────
-  // Opens the form, waits for the result map from AddClassroomPage,
-  // then wraps it into a _ClassroomData and appends to the slider.
 
   Future<void> _openAddClassroom() async {
     final result = await Navigator.push<Map<String, dynamic>>(
@@ -304,14 +391,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       MaterialPageRoute(builder: (_) => const AddClassroomPage()),
     );
     if (result != null) {
-      // Reload from Firestore as the single source of truth.
-      // Previously we also did a local setState append here, which caused the
-      // new classroom to appear twice — once from the local append (showing the
-      // title) and again when Firestore returned the same doc (showing the
-      // classroom code as the fallback title).
       await _loadDashboard();
-
-      // Jump the PageView to the newly added card
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_pageController.hasClients) {
           _pageController.animateToPage(
@@ -443,8 +523,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                   fontSize: 14,
                                 )),
                             subtitle: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(n.body,
                                     style: const TextStyle(
@@ -624,7 +703,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               _buildAttentionSection(),
               const SizedBox(height: 40),
 
-              // ── "My Classrooms" row with + button ──────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -649,7 +727,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   ),
                 ],
               ),
-              // ───────────────────────────────────────────────────────────────
 
               const SizedBox(height: 20),
               Expanded(
@@ -663,8 +740,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                         Container(
                           width: 64, height: 64,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFA6768B)
-                                .withOpacity(0.2),
+                            color: const Color(0xFFA6768B).withOpacity(0.2),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.add,
@@ -691,10 +767,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   itemCount: _classrooms.length,
                   itemBuilder: (context, index) {
                     final rel     = index - _currentPage;
-                    final scale   =
-                    (1 - (rel.abs() * 0.2)).clamp(0.8, 1.0);
-                    final opacity =
-                    (1 - (rel.abs() * 0.5)).clamp(0.5, 1.0);
+                    final scale   = (1 - (rel.abs() * 0.2)).clamp(0.8, 1.0);
+                    final opacity = (1 - (rel.abs() * 0.5)).clamp(0.5, 1.0);
                     return Transform.scale(
                       scale: scale,
                       child: Opacity(
@@ -725,6 +799,24 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               overflow: TextOverflow.ellipsis),
         ),
         Row(children: [
+
+          // ── RED FIX BUTTON — tap once, then delete after demo ───────────────
+          GestureDetector(
+            onTap: _fixRiskLevels,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('FIX',
+                  style: TextStyle(color: Colors.white,
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // ── END FIX BUTTON ──────────────────────────────────────────────────
+
           GestureDetector(
             onTap: _openNotifications,
             child: Stack(clipBehavior: Clip.none, children: [
@@ -763,13 +855,36 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   // ── ATTENTION SECTION ─────────────────────────────────────────────────────────
 
   Widget _buildAttentionSection() {
+    final highRiskStudents =
+    _riskyStudents.where((s) => s.riskLevel == 'HIGH').toList();
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('ATTENTION',
-              style: TextStyle(color: Colors.white70, fontSize: 22,
-                  fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          Row(children: [
+            const Text('ATTENTION',
+                style: TextStyle(color: Colors.white70, fontSize: 22,
+                    fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            if (highRiskStudents.isNotEmpty) ...[
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                ),
+                child: Text(
+                  '${highRiskStudents.length} HIGH RISK',
+                  style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ]),
           const SizedBox(height: 10),
           Container(
             width: double.infinity,
@@ -777,18 +892,36 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
             decoration: BoxDecoration(
                 color: const Color(0xFFA6768B),
                 borderRadius: BorderRadius.circular(15)),
-            child: _riskyStudents.isEmpty
-                ? const Center(
-                child: Text('No risky students at the moment',
-                    style: TextStyle(
-                        color: Colors.white70, fontSize: 15)))
+            child: highRiskStudents.isEmpty
+                ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle_outline,
+                      color: Colors.white54, size: 32),
+                  const SizedBox(height: 8),
+                  const Text('No high-risk students right now',
+                      style: TextStyle(
+                          color: Colors.white70, fontSize: 14)),
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: _loadDashboard,
+                    child: const Text('Tap to refresh',
+                        style: TextStyle(
+                            color: Color(0xFFE9C2D7),
+                            fontSize: 12,
+                            decoration: TextDecoration.underline)),
+                  ),
+                ],
+              ),
+            )
                 : ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
                   horizontal: 12, vertical: 16),
-              itemCount: _riskyStudents.length,
+              itemCount: highRiskStudents.length,
               itemBuilder: (_, i) {
-                final s = _riskyStudents[i];
+                final s = highRiskStudents[i];
                 return GestureDetector(
                   onTap: () => _showRiskyStudentDetail(s),
                   child: Container(
@@ -804,8 +937,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(children: [
                           Container(

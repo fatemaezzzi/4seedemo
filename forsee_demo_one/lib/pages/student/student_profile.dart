@@ -7,15 +7,20 @@
 //  • firestoreId passed through all navigation args
 //  • BehaviourIncident returned from BehaviourIncidentPage → updates local state
 //  • Incident count badge, recent incidents list, high-risk banner live-update
-//  • AI Suggestions derived from logged incidents
+//  • AI Suggestions derived from logged incidents — each tappable → TeacherFeedbackPage
+//  • Feedback Timeline shows past logged feedback for this student (live stream)
 //  • All report tabs pass firestoreId to ReportPage
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:forsee_demo_one/model/student_model.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
+import 'package:forsee_demo_one/pages/support/ngo_support_page.dart';
+import 'package:forsee_demo_one/pages/support/financial_support_page.dart';
+import 'package:forsee_demo_one/pages/support/counseling_page.dart';
+import 'package:forsee_demo_one/pages/support/mental_health_page.dart';
+import 'package:forsee_demo_one/services/feedback_service.dart';
 
 class StudentProfilePage extends StatefulWidget {
   final StudentModel student;
@@ -27,6 +32,7 @@ class StudentProfilePage extends StatefulWidget {
 
 class _StudentProfilePageState extends State<StudentProfilePage> {
   final List<BehaviourIncident> _incidents = [];
+  final _feedbackService = FeedbackService();
   StudentModel get _s => widget.student;
 
   Color get _borderColor {
@@ -69,45 +75,21 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
   }
 
-  void _showResource(String type) {
-    final data = {
-      'NGO':              {'title':'NGO Support',             'icon':Icons.handshake_outlined,              'color':Colors.tealAccent,    'details':['Pratham Education Foundation','CRY – Child Rights and You','Teach For India'],                                        'action':'Contact NGO'},
-      'Financial Support':{'title':'Financial Support',       'icon':Icons.account_balance_wallet_outlined, 'color':Colors.amberAccent,   'details':['PM Scholarship Scheme','National Means-cum-Merit Scholarship','State Government Scholarship'],                         'action':'Apply for Support'},
-      'Counseling':       {'title':'Counseling Services',     'icon':Icons.chat_bubble_outline,             'color':Colors.orangeAccent,  'details':['School Counselor – Ms. Priya','iCall Helpline: 9152987821','Vandrevala Foundation: 1860-2662-345'],                    'action':'Book Session'},
-      'Mental Health':    {'title':'Mental Health Resources', 'icon':Icons.favorite_border,                 'color':Colors.pinkAccent,    'details':['iCall: 9152987821','Vandrevala Foundation: 1860-2662-345','NIMHANS Helpline: 080-46110007'],                           'action':'Get Help'},
-    };
-    final r = data[type]!;
-    final c = r['color'] as Color;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(color: Color(0xFF3B2028), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          Row(children: [
-            CircleAvatar(backgroundColor: c.withOpacity(0.15), child: Icon(r['icon'] as IconData, color: c)),
-            const SizedBox(width: 12),
-            Text(r['title'] as String, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-          ]),
-          const SizedBox(height: 16),
-          ...(r['details'] as List<String>).map((d) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(children: [Icon(Icons.arrow_forward_ios, size: 12, color: c), const SizedBox(width: 8), Text(d, style: const TextStyle(color: Colors.white70, fontSize: 14))]),
-          )),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, height: 48,
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE9C2D7), foregroundColor: const Color(0xFF512D38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              child: Text(r['action'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
-            ),
-          ),
-        ]),
-      ),
-    );
+  void _openResource(String type) {
+    switch (type) {
+      case 'NGO':
+        Get.to(() => NgoSupportPage(student: _s));
+        break;
+      case 'Financial Support':
+        Get.to(() => FinancialSupportPage(student: _s));
+        break;
+      case 'Counseling':
+        Get.to(() => CounselingPage(student: _s));
+        break;
+      case 'Mental Health':
+        Get.to(() => MentalHealthPage(student: _s));
+        break;
+    }
   }
 
   List<Map<String, dynamic>> get _suggestions {
@@ -267,20 +249,54 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   const Text('AI Suggestions', style: TextStyle(color: Color(0xFFF4BFDB), fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
                   Row(children: List.generate(5, (i) => Icon(Icons.star, color: i < 4 ? Colors.orange : Colors.white30, size: 20))),
                 ]),
+                const SizedBox(height: 4),
+                const Text('Tap a suggestion to log your feedback',
+                    style: TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'Pridi')),
                 const SizedBox(height: 12),
-                ..._suggestions.map((s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(children: [
-                    Icon(s['icon'] as IconData,
-                        color: s['hi'] == true ? Colors.orangeAccent : s['pos'] == true ? Colors.greenAccent : const Color(0xFFF4BFDB), size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(s['text'] as String,
-                        style: TextStyle(
-                            color: s['hi'] == true ? Colors.orangeAccent : s['pos'] == true ? Colors.greenAccent : Colors.white,
-                            fontSize: 14))),
-                  ]),
-                )),
+                ..._suggestions.map((s) {
+                  final iconColor = s['hi'] == true ? Colors.orangeAccent
+                      : s['pos'] == true ? Colors.greenAccent
+                      : const Color(0xFFF4BFDB);
+                  final textColor = s['hi'] == true ? Colors.orangeAccent
+                      : s['pos'] == true ? Colors.greenAccent
+                      : Colors.white;
+                  return GestureDetector(
+                    onTap: () => Get.toNamed(
+                      AppRoutes.TEACHER_FEEDBACK,
+                      arguments: {
+                        'studentId':   _s.firestoreId,
+                        'studentName': _s.name,
+                        'suggestion':  s['text'] as String,
+                      },
+                    ),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B2028),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(children: [
+                        Icon(s['icon'] as IconData, color: iconColor, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(s['text'] as String,
+                            style: TextStyle(color: textColor, fontSize: 14))),
+                        const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
+                      ]),
+                    ),
+                  );
+                }),
               ]),
+            ),
+
+            const SizedBox(height: 20),
+
+            // FEEDBACK TIMELINE
+            _FeedbackTimeline(
+              studentId:   _s.firestoreId,
+              studentName: _s.name,
+              service:     _feedbackService,
             ),
 
             const SizedBox(height: 25),
@@ -307,7 +323,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   Widget _resourceCard(String title, IconData icon) => Expanded(
     child: GestureDetector(
-      onTap: () => _showResource(title),
+      onTap: () => _openResource(title),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: const Color(0xFFF4BFDB), borderRadius: BorderRadius.circular(12)),
@@ -319,4 +335,206 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       ),
     ),
   );
+}
+
+// =============================================================================
+// FEEDBACK TIMELINE WIDGET
+// Embedded in StudentProfilePage — shows the 3 most recent feedback entries
+// for this student with a live Firestore stream, plus a "Log" / "See all" button.
+// =============================================================================
+
+class _FeedbackTimeline extends StatelessWidget {
+  final String          studentId;
+  final String          studentName;
+  final FeedbackService service;
+
+  const _FeedbackTimeline({
+    required this.studentId,
+    required this.studentName,
+    required this.service,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<TeacherFeedback>>(
+      stream: service.streamFeedbackForStudent(studentId),
+      builder: (context, snap) {
+        final entries = snap.data ?? [];
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+          // ── Header ──────────────────────────────────────────────────────
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Feedback Timeline',
+                style: TextStyle(color: Color(0xFFF4BFDB), fontSize: 20,
+                    fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
+            GestureDetector(
+              onTap: () => Get.toNamed(
+                AppRoutes.TEACHER_FEEDBACK,
+                arguments: {
+                  'studentId':   studentId,
+                  'studentName': studentName,
+                  'suggestion':  '',
+                },
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA6768B),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Text('Log', style: TextStyle(color: Colors.white,
+                      fontSize: 12, fontFamily: 'Pridi',
+                      fontWeight: FontWeight.bold)),
+                ]),
+              ),
+            ),
+          ]),
+
+          const SizedBox(height: 10),
+
+          // ── Loading ──────────────────────────────────────────────────────
+          if (snap.connectionState == ConnectionState.waiting)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Color(0xFFE9C2D7)),
+              )),
+            )
+
+          // ── Empty state ──────────────────────────────────────────────────
+          else if (entries.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3B2028),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: const Row(children: [
+                Icon(Icons.history_edu_outlined, color: Colors.white24, size: 18),
+                SizedBox(width: 10),
+                Text('No feedback logged yet — tap a suggestion above',
+                    style: TextStyle(color: Colors.white30,
+                        fontSize: 12, fontFamily: 'Pridi')),
+              ]),
+            )
+
+          // ── Timeline entries (max 3) ─────────────────────────────────────
+          else
+            ...entries.take(3).map((fb) => _timelineEntry(fb)),
+
+          // ── See all link ─────────────────────────────────────────────────
+          if (entries.length > 3)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: GestureDetector(
+                onTap: () => Get.toNamed(
+                  AppRoutes.TEACHER_FEEDBACK,
+                  arguments: {
+                    'studentId':   studentId,
+                    'studentName': studentName,
+                    'suggestion':  '',
+                  },
+                ),
+                child: Center(
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('See all ${entries.length} entries',
+                        style: const TextStyle(color: Color(0xFFE9C2D7),
+                            fontSize: 12, fontFamily: 'Pridi')),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_ios,
+                        color: Color(0xFFE9C2D7), size: 11),
+                  ]),
+                ),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+
+  Widget _timelineEntry(TeacherFeedback fb) {
+    final outcomeColor = fb.isPositive
+        ? const Color(0xFF4CAF50)
+        : fb.isNegative
+        ? const Color(0xFFFF7043)
+        : const Color(0xFFA6768B);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+        // Dot + line
+        Column(children: [
+          Container(
+            width: 10, height: 10,
+            decoration: BoxDecoration(
+              color: outcomeColor,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(
+                  color: outcomeColor.withOpacity(0.4),
+                  blurRadius: 4, spreadRadius: 1)],
+            ),
+          ),
+          Container(width: 2, height: 52, color: Colors.white10),
+        ]),
+        const SizedBox(width: 12),
+
+        // Card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B2028),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: outcomeColor.withOpacity(0.25)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text(fb.outcomeEmoji, style: const TextStyle(fontSize: 13)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    fb.suggestion.isNotEmpty ? fb.suggestion : 'General feedback',
+                    style: const TextStyle(color: Color(0xFFE9C2D7),
+                        fontSize: 12, fontFamily: 'Pridi',
+                        fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(fb.timeAgo,
+                    style: const TextStyle(color: Colors.white30, fontSize: 10)),
+              ]),
+              const SizedBox(height: 5),
+              Text(fb.actionTaken,
+                  style: const TextStyle(color: Colors.white60,
+                      fontSize: 12, fontFamily: 'Pridi'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+              if (fb.followUpNeeded)
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Row(children: const [
+                    Icon(Icons.alarm_on_rounded,
+                        size: 11, color: Color(0xFFFF7043)),
+                    SizedBox(width: 4),
+                    Text('Follow-up needed',
+                        style: TextStyle(color: Color(0xFFFF7043),
+                            fontSize: 11, fontFamily: 'Pridi')),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
 }

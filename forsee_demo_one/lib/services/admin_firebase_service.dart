@@ -60,7 +60,6 @@ class FirestoreStudent {
   final int    health;
   final int    dalc;
   final int    walc;
-  // joined from predictions
   final String       riskLevel;
   final double       riskScore;
   final double       dropoutProbability;
@@ -89,7 +88,6 @@ class FirestoreStudent {
     required this.confidence,
   });
 
-  /// G1/G2 are out of 20 — convert to a 0-100 percentage
   double get avgScore => ((g1 + g2) / 2.0) * 5.0;
 
   String get attendanceLabel {
@@ -137,20 +135,12 @@ class AdminFirebaseService {
   static final _db   = FirebaseFirestore.instance;
   static final _auth = FirebaseAuth.instance;
 
-  // ── INTERNAL BUILDER (static — not a local function) ──────────────────────
-  //
-  // Dart allows local functions in async bodies syntactically, but they can
-  // capture variables incorrectly in certain analysis modes. Using a private
-  // static method avoids this entirely and is cleaner.
-
-  // Safe string helper — never throws, works for any Firestore type
   static String _str(dynamic v, [String fallback = '']) {
     if (v == null) return fallback;
     if (v is String) return v;
     return v.toString();
   }
 
-  // Safe int helper
   static int _int(dynamic v, [int fallback = 0]) {
     if (v == null) return fallback;
     if (v is int) return v;
@@ -159,13 +149,25 @@ class AdminFirebaseService {
     return fallback;
   }
 
-  // Safe double helper
   static double _dbl(dynamic v, [double fallback = 0.0]) {
     if (v == null) return fallback;
     if (v is double) return v;
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v) ?? fallback;
     return fallback;
+  }
+
+  /// Normalises a dropout_probability value to the 0–100 range.
+  ///
+  /// The ML service stores the value inconsistently across documents:
+  ///   • Some docs store it as a fraction  e.g. 0.857  → needs × 100
+  ///   • Some docs store it as a percentage e.g. 85.70  → already correct
+  /// We detect which format it is by checking whether the raw value > 1.
+  static double _normaliseDropout(dynamic raw) {
+    final v = _dbl(raw);
+    // If the value is already > 1 it has been stored as a percentage (0–100).
+    // If it is ≤ 1 it is a fraction that must be converted.
+    return v > 1.0 ? v : v * 100.0;
   }
 
   static FirestoreStudent _buildStudent({
@@ -176,8 +178,6 @@ class AdminFirebaseService {
     required Map<String, Map<String, dynamic>> predMap,
   }) {
     final pred = predMap[id] ?? {};
-
-    // Safe list — never throws even if stored as wrong type
     final riskFactorsRaw = pred['risk_factors'];
     final List<String> riskFactors = (riskFactorsRaw is List)
         ? riskFactorsRaw.map((e) => e.toString()).toList()
@@ -198,7 +198,7 @@ class AdminFirebaseService {
       walc:               _int(academic['Walc']),
       riskLevel:          _str(pred['risk_level'],          'UNKNOWN'),
       riskScore:          _dbl(pred['risk_score']),
-      dropoutProbability: _dbl(pred['dropout_probability']),
+      dropoutProbability: _normaliseDropout(pred['dropout_probability']),
       recommendation:     _str(pred['recommendation']),
       riskFactors:        riskFactors,
       confidence:         _str(pred['confidence']),
@@ -226,8 +226,7 @@ class AdminFirebaseService {
         .collection('users')
         .doc(user.uid)
         .snapshots()
-        .map((doc) =>
-    (doc.exists && doc.data() != null)
+        .map((doc) => (doc.exists && doc.data() != null)
         ? AdminProfile.fromMap(doc.data()!, user.uid)
         : null);
   }
@@ -251,20 +250,15 @@ class AdminFirebaseService {
   }
 
   // ── STUDENTS ──────────────────────────────────────────────────────────────
-  //
-  // ONLY reads from `users` where role == 'student'.
-  // The `students` collection is intentionally ignored — it contains
-  // seeded/hardcoded data that should not appear in the admin view.
-  // Only real signed-up users are shown.
 
   static Future<List<FirestoreStudent>> fetchAllStudents() async {
-    final QuerySnapshot<Map<String, dynamic>> userStudentSnap =
-    await _db.collection('users').where('role', isEqualTo: 'student').get();
+    final userStudentSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'student')
+        .get();
 
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
+    final predSnap = await _db.collection('predictions').get();
 
-    // ── Build prediction map: studentId → latest prediction doc ─────────
     final Map<String, Map<String, dynamic>> predMap = {};
     for (final doc in predSnap.docs) {
       final d   = doc.data();
@@ -276,14 +270,12 @@ class AdminFirebaseService {
       } else {
         final existTs = existing['timestamp'] as Timestamp?;
         final curTs   = d['timestamp']        as Timestamp?;
-        if (curTs != null && existTs != null &&
-            curTs.compareTo(existTs) > 0) {
+        if (curTs != null && existTs != null && curTs.compareTo(existTs) > 0) {
           predMap[sid] = d;
         }
       }
     }
 
-    // ── Only real signed-up students from the users collection ───────────
     final List<FirestoreStudent> result = [];
     for (final doc in userStudentSnap.docs) {
       final d = doc.data();
@@ -295,17 +287,14 @@ class AdminFirebaseService {
         predMap:  predMap,
       ));
     }
-
     return result;
   }
 
   // ── CLASSROOMS ────────────────────────────────────────────────────────────
 
   static Future<List<ClassroomRiskData>> fetchClassroomRiskData() async {
-    final QuerySnapshot<Map<String, dynamic>> classSnap =
-    await _db.collection('classrooms').get();
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
+    final classSnap = await _db.collection('classrooms').get();
+    final predSnap  = await _db.collection('predictions').get();
 
     final Map<String, String> latestRiskPerStudent = {};
     for (final doc in predSnap.docs) {
@@ -338,22 +327,22 @@ class AdminFirebaseService {
   // ── ADMIN STATS ───────────────────────────────────────────────────────────
 
   static Future<AdminStats> fetchAdminStats() async {
-    final QuerySnapshot<Map<String, dynamic>> teachersSnap =
-    await _db.collection('users').where('role', isEqualTo: 'teacher').get();
+    final teachersSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'teacher')
+        .get();
 
-    // Only count real signed-up students — not seeded students collection
-    final QuerySnapshot<Map<String, dynamic>> usersStudentSnap =
-    await _db.collection('users').where('role', isEqualTo: 'student').get();
+    final usersStudentSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'student')
+        .get();
 
-    final QuerySnapshot<Map<String, dynamic>> predSnap =
-    await _db.collection('predictions').get();
+    final predSnap = await _db.collection('predictions').get();
 
-    // Only real auth-registered students
     final Set<String> allStudentIds = {
       ...usersStudentSnap.docs.map((d) => d.id),
     };
 
-    // Latest risk per student
     final Map<String, String> latestRisk = {};
     for (final doc in predSnap.docs) {
       final d   = doc.data();
@@ -384,7 +373,17 @@ class AdminFirebaseService {
     );
   }
 
-  // ── RECENT PREDICTIONS (live activity log) ────────────────────────────────
+  // ── RECENT PREDICTIONS (live activity feed) ───────────────────────────────
+  //
+  // FIX 1 — Student name resolution:
+  //   The predictions collection already stores `studentName` on each doc
+  //   (written by the ML service). We use that directly.
+  //   Only if it is empty/missing do we fall back to looking up users/{studentId},
+  //   then students/{studentId}, before giving up and showing the raw ID.
+  //
+  // FIX 2 — Dropout probability normalisation:
+  //   Stored values vary: some docs store 0.857 (fraction), others 85.70
+  //   (percentage). _normaliseDropout() detects and converts consistently.
 
   static Stream<List<Map<String, dynamic>>> streamRecentPredictions({
     int limit = 10,
@@ -394,7 +393,46 @@ class AdminFirebaseService {
         .orderBy('timestamp', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data()).toList());
+        .asyncMap((snap) async {
+      final enriched = await Future.wait(snap.docs.map((doc) async {
+        final data      = Map<String, dynamic>.from(doc.data());
+        final studentId = _str(data['studentId']);
+
+        // ── Name resolution ───────────────────────────────────────────────
+        // Priority 1: studentName already on the prediction doc (most common).
+        final docName = _str(data['studentName']).trim();
+        if (docName.isNotEmpty) {
+          data['studentName'] = docName;
+        } else if (studentId.isNotEmpty) {
+          // Priority 2: look up users/{studentId}.
+          String resolved = '';
+          try {
+            final userDoc = await _db.collection('users').doc(studentId).get();
+            resolved = _str(userDoc.data()?['name']).trim();
+          } catch (_) {}
+
+          // Priority 3: look up students/{studentId}.
+          if (resolved.isEmpty) {
+            try {
+              final stuDoc = await _db.collection('students').doc(studentId).get();
+              resolved = _str(stuDoc.data()?['name']).trim();
+            } catch (_) {}
+          }
+
+          data['studentName'] = resolved.isNotEmpty ? resolved : studentId;
+        } else {
+          data['studentName'] = 'Unknown';
+        }
+
+        // ── Dropout probability normalisation ─────────────────────────────
+        data['dropout_probability'] =
+            _normaliseDropout(data['dropout_probability']);
+
+        return data;
+      }));
+
+      return enriched;
+    });
   }
 
   // ── UPDATE ADMIN PROFILE ──────────────────────────────────────────────────

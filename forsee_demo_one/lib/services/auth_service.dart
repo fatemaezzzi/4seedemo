@@ -84,9 +84,21 @@ class AuthService {
   Future<AppUser?> fetchCurrentAppUser() async {
     final user = _auth.currentUser;
     if (user == null) return null;
-    final doc = await _db.collection('users').doc(user.uid).get();
-    if (!doc.exists) return null;
-    return AppUser.fromMap(doc.data()!, user.uid);
+
+    // First try direct doc lookup (works for users who signed up normally)
+    final directDoc = await _db.collection('users').doc(user.uid).get();
+    if (directDoc.exists) {
+      return AppUser.fromMap(directDoc.data()!, user.uid);
+    }
+
+    // Fallback: query by uid field (works for seeded users like s_ayaan_khan)
+    final snap = await _db
+        .collection('users')
+        .where('uid', isEqualTo: user.uid)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    return AppUser.fromMap(snap.docs.first.data(), user.uid);
   }
 
   // ── EMAIL SIGN UP ──────────────────────────────────────────────────────────
@@ -142,14 +154,26 @@ class AuthService {
     );
 
     final uid = credential.user!.uid;
-    final doc = await _db.collection('users').doc(uid).get();
 
-    if (!doc.exists) {
+    // First try direct doc lookup (works for users who signed up normally)
+    final directDoc = await _db.collection('users').doc(uid).get();
+    if (directDoc.exists) {
+      return AppUser.fromMap(directDoc.data()!, uid);
+    }
+
+    // Fallback: query by uid field (works for seeded users like s_ayaan_khan)
+    final snap = await _db
+        .collection('users')
+        .where('uid', isEqualTo: uid)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) {
       await _auth.signOut();
       throw Exception('User profile not found. Please contact support.');
     }
 
-    return AppUser.fromMap(doc.data()!, uid);
+    return AppUser.fromMap(snap.docs.first.data(), uid);
   }
 
   // ── GOOGLE SIGN IN ─────────────────────────────────────────────────────────
@@ -167,11 +191,25 @@ class AuthService {
     final userCredential = await _auth.signInWithCredential(credential);
     final firebaseUser   = userCredential.user!;
 
-    final doc = await _db.collection('users').doc(firebaseUser.uid).get();
-
-    if (doc.exists) {
+    final directDoc = await _db.collection('users').doc(firebaseUser.uid).get();
+    if (directDoc.exists) {
       return SocialAuthResult(
-        appUser:      AppUser.fromMap(doc.data()!, firebaseUser.uid),
+        appUser:      AppUser.fromMap(directDoc.data()!, firebaseUser.uid),
+        firebaseUser: firebaseUser,
+        isNewUser:    false,
+      );
+    }
+
+    // Fallback: query by uid field (seeded users)
+    final snap = await _db
+        .collection('users')
+        .where('uid', isEqualTo: firebaseUser.uid)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isNotEmpty) {
+      return SocialAuthResult(
+        appUser:      AppUser.fromMap(snap.docs.first.data(), firebaseUser.uid),
         firebaseUser: firebaseUser,
         isNewUser:    false,
       );

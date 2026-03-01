@@ -1,3 +1,4 @@
+import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
 import 'package:get/get.dart';
 import 'package:forsee_demo_one/app/routes/app_routes.dart';
 import 'package:forsee_demo_one/app/middleware/auth_middleware.dart';
@@ -21,7 +22,7 @@ import 'package:forsee_demo_one/pages/teacher/classroom_page.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
 import 'package:forsee_demo_one/pages/teacher/create_marks_entry_page.dart';
 import 'package:forsee_demo_one/pages/teacher/review_submit_page.dart';
-import 'package:forsee_demo_one/pages/teacher/teacher_analysis_page.dart';
+import 'package:forsee_demo_one/pages/teacher/teacher_feedback_page.dart';
 import 'package:forsee_demo_one/pages/teacher/upload_hub_page.dart';
 
 // ── Teacher-only pages ────────────────────────────────────────────────────────
@@ -156,6 +157,11 @@ class AppPages {
     GetPage(
       name: AppRoutes.TEACHER_ANALYSIS,
       page: () => const TeacherAnalysisPage(),
+      middlewares: [AuthMiddleware(allowed: ['teacher'])],
+    ),
+    GetPage(
+      name: AppRoutes.TEACHER_FEEDBACK,
+      page: () => const TeacherFeedbackPage(),
       middlewares: [AuthMiddleware(allowed: ['teacher'])],
     ),
     GetPage(

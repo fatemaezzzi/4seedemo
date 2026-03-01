@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:forsee_demo_one/model/student_model.dart';
 import 'package:forsee_demo_one/pages/teacher/behaviour_incident_page.dart';
 import 'package:forsee_demo_one/services/api_service.dart';
@@ -26,10 +27,16 @@ class _ReportPageState extends State<ReportPage>
   late final Map<String, dynamic> _args =
       (Get.arguments as Map<String, dynamic>?) ?? {};
 
+  // When opened from the student dashboard there are no Get.arguments.
+  // In that case fall back to the currently logged-in user's own UID so
+  // _loadData() can fetch /students/{uid} directly.
+  late final String _selfUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  bool get _isSelfView => _args.isEmpty;
+
   late final StudentModel _student = StudentModel(
-    name:        _args['name']        as String?    ?? 'Unknown Student',
+    name:        _args['name']        as String?    ?? 'Me',
     studentId:   _args['studentId']   as String?    ?? '',
-    firestoreId: _args['firestoreId'] as String?    ?? '',
+    firestoreId: _args['firestoreId'] as String?    ?? _selfUid,
     standard:    _args['standard']    as String?    ?? '',
     phone:       _args['phone']       as String?    ?? '',
     className:   _args['className']   as String?    ?? '',
@@ -37,7 +44,7 @@ class _ReportPageState extends State<ReportPage>
     riskLevel:   _args['riskLevel']   as RiskLevel? ?? RiskLevel.none,
   );
 
-  late final String _reportType = _args['reportType'] as String? ?? 'Semester';
+  late final String _reportType = _args['reportType'] as String? ?? 'My';
   late final List<BehaviourIncident> _incidents =
       (_args['incidents'] as List<BehaviourIncident>?) ?? [];
 
@@ -83,7 +90,7 @@ class _ReportPageState extends State<ReportPage>
 
   Future<void> _loadData() async {
     if (_student.firestoreId.isEmpty) {
-      setState(() { _error = 'No student ID.'; _loading = false; });
+      setState(() { _error = 'Sign in required to view report.'; _loading = false; });
       return;
     }
     try {
@@ -271,12 +278,13 @@ class _ReportPageState extends State<ReportPage>
   Widget _buildHeader() => Padding(
     padding: const EdgeInsets.fromLTRB(8, 12, 20, 0),
     child: Row(children: [
-      IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-        onPressed: () => Get.back(),
-      ),
+      if (!_isSelfView)
+        IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          onPressed: () => Get.back(),
+        ),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_student.name,
+        Text(_isSelfView ? (_studentDoc['name'] as String? ?? 'My Report') : _student.name,
             style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Pridi')),
         Row(children: [
           Text(_student.studentId, style: const TextStyle(color: Colors.white70, fontSize: 12)),

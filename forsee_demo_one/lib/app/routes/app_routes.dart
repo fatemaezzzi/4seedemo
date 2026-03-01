@@ -43,4 +43,6 @@ abstract class AppRoutes {
   static const LINKED_ACCOUNT   = '/linked-account';
   static const REPORT_PROBLEM   = '/report-problem';
   static const TALK_COUNSELLOR  = '/talk-counsellor';
+
+  static const TEACHER_FEEDBACK = '/teacher-feedback';
 }

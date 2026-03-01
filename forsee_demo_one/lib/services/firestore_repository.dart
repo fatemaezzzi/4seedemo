@@ -17,13 +17,68 @@ class FirestoreRepository {
         .collection('students')
         .where('classroomId', isEqualTo: classroomId)
         .snapshots()
-        .map((snap) {
-      final list = snap.docs
-          .map((doc) => StudentModel.fromFirestore(doc.data(), doc.id))
-          .toList();
+        .asyncMap((snap) async {
+      if (snap.docs.isEmpty) return <StudentModel>[];
+
+      // Fetch latest prediction for each student to get live riskLevel.
+      // predictions stores risk_level as uppercase e.g. 'HIGH' — normalise to lowercase.
+      final docIds = snap.docs.map((d) => d.id).toList();
+      final Map<String, RiskLevel> riskMap = {};
+
+      // Firestore whereIn limit is 30 — chunk if needed
+      for (var i = 0; i < docIds.length; i += 30) {
+        final chunk = docIds.sublist(i, (i + 30).clamp(0, docIds.length));
+        final predSnap = await _db
+            .collection('predictions')
+            .where('studentId', whereIn: chunk)
+            .get();
+
+        // Keep only the most recent prediction per student
+        final Map<String, DateTime> latestTime = {};
+        for (final doc in predSnap.docs) {
+          final d   = doc.data();
+          final sid = d['studentId'] as String? ?? '';
+          final raw = (d['risk_level'] as String? ?? '').toLowerCase();
+          final ts  = (d['timestamp'] as Timestamp?)?.toDate()
+              ?? (d['createdAt'] as Timestamp?)?.toDate()
+              ?? DateTime.fromMillisecondsSinceEpoch(0);
+          if (!latestTime.containsKey(sid) || ts.isAfter(latestTime[sid]!)) {
+            latestTime[sid] = ts;
+            riskMap[sid] = _riskFromString(raw);
+          }
+        }
+      }
+
+      final list = snap.docs.map((doc) {
+        final base = StudentModel.fromFirestore(doc.data(), doc.id);
+        final live = riskMap[doc.id];
+        if (live != null) {
+          return StudentModel(
+            firestoreId: base.firestoreId,
+            studentId:   base.studentId,
+            name:        base.name,
+            standard:    base.standard,
+            phone:       base.phone,
+            className:   base.className,
+            subject:     base.subject,
+            riskLevel:   live,
+          );
+        }
+        return base;
+      }).toList();
+
       list.sort((a, b) => a.name.compareTo(b.name));
       return list;
     });
+  }
+
+  static RiskLevel _riskFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'high':   return RiskLevel.high;
+      case 'medium': return RiskLevel.medium;
+      case 'low':    return RiskLevel.low;
+      default:       return RiskLevel.none;
+    }
   }
 
   // ── SINGLE STUDENT ────────────────────────────────────────────────────────
