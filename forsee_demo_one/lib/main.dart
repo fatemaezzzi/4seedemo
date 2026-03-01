@@ -1,84 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:forsee_demo_one/welcome_page_first.dart';
-import 'input_test_page.dart';
-import 'scan_attendance.dart'; // Import your new file
-// import 'welcome_page_first.dart';
-import 'simple_api_test.dart';
+import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-
+import 'package:forsee_demo_one/app/routes/app_pages.dart';
+import 'package:forsee_demo_one/app/routes/app_routes.dart';
+import 'package:forsee_demo_one/controllers/auth_controller.dart';
+import 'package:forsee_demo_one/theme/app_theme.dart';
+import 'services/firebase_options.dart';
+import 'package:forsee_demo_one/services/firestore_repository.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: HomeScreen(),
-  ));
+
+
+  // Register AuthController globally before app starts.
+  // permanent: true → never destroyed while app is alive.
+  Get.put(AuthController(), permanent: true);
+  Get.put(FirestoreRepository(), permanent: true);
+  runApp(const FourSeeApp());
 }
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class FourSeeApp extends StatelessWidget {
+  const FourSeeApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Home")),
-      body: Center(
-    child: Column(
-    mainAxisSize: MainAxisSize.min, // keeps column tight
-      children: [
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const ScanAttendanceScreen(),
-              ),
-            );
-          },
-          child: const Text("Go to Attendance Scanner"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const WelcomePageFirst(),
-              ),
-            );
-          },
-          child: const Text("WelcomePage"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const InputTestPage(),
-              ),
-            );
-          },
-          child: const Text("Testing Page"),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SimpleAPITest(),
-              ),
-            );
-          },
-          child: const Text("API Testing Page"),
-        ),
-      ],
-    ),
-    ),
+    return GetMaterialApp(
+      title: '4See',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.theme,
+
+      // App always starts at welcome-one.
+      // AuthController's onInit() fires immediately and redirects
+      // to the correct dashboard if the user is already logged in.
+      initialRoute: AppRoutes.WELCOME_ONE,
+
+      getPages: AppPages.pages,
+
+      defaultTransition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 250),
     );
   }
 }
